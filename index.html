@@ -917,9 +917,27 @@
                 if (STATE.contentCache[cacheKey]) {
                     text = STATE.contentCache[cacheKey];
                 } else {
-                    const res = await fetch(`./wiki/${folder}/${filename}`);
-                    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-                    text = await res.text();
+                    // ATTEMPT 1: Structure Path
+                    try {
+                        const path1 = `./wiki/${folder}/${filename}`;
+                        const res = await fetch(path1);
+                        if (res.ok) {
+                            text = await res.text();
+                        } else {
+                            throw new Error("404");
+                        }
+                    } catch (e) {
+                        // ATTEMPT 2: Flat Path (Fallback) - "AUTO-FIX"
+                        console.warn(`Attempt 1 failed for ${folder}/${filename}. Trying flat path...`);
+                        const path2 = `./wiki/${filename}`;
+                        const res2 = await fetch(path2);
+                        if (res2.ok) {
+                            text = await res2.text();
+                        } else {
+                            // If both fail, throw detailed error
+                            throw new Error(`Content not found. Tried:\n1. ./wiki/${folder}/${filename}\n2. ./wiki/${filename}`);
+                        }
+                    }
                     STATE.contentCache[cacheKey] = text;
                 }
 
@@ -965,7 +983,18 @@
 
             } catch (e) {
                 console.error("Load failed", e);
-                viewer.innerHTML = `<h1>Page Not Found</h1><p class="text-red-400">Could not load content: ${filename}</p><p>Check if the file exists in your <code>wiki/</code> folder and if <code>.nojekyll</code> exists in repo root.</p>`;
+                const cleanError = e.message.replace(/\n/g, '<br>');
+                viewer.innerHTML = `
+                    <h1 class="text-red-500 mb-2">Page Not Found</h1>
+                    <div class="p-4 bg-red-900/20 border border-red-900 rounded text-sm font-mono text-red-300">
+                        <strong>Error Details:</strong><br>${cleanError}
+                    </div>
+                    <p class="mt-4 text-gray-400 text-sm">
+                        <strong>Troubleshooting:</strong><br>
+                        1. Ensure the file exists in your <code>wiki/</code> folder.<br>
+                        2. Check capitalization (Linux/GitHub is case-sensitive).<br>
+                        3. Verify <code>.nojekyll</code> is at the root of your repo.
+                    </p>`;
             }
         }
 
