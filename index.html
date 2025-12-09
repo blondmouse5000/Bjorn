@@ -393,6 +393,21 @@
             outline-offset: 2px;
         }
 
+        .badge-sm {
+            transform: scale(.75);
+            transform-origin: top left;
+            margin-bottom: calc(-6px * .75);
+        }
+
+        .badge-sm:hover {
+            transform: scale(.80);
+            transition: transform .15s ease;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: linear-gradient(180deg, var(--accent-green), var(--border-color));
+        }
+
         /* --- PRINT STYLESHEET --- */
         @media print {
             body {
@@ -584,29 +599,35 @@
             <div class="text-center">
                 <strong class="text-gray-500 text-sm block mb-3 font-mono tracking-wide">:: JOIN US ::</strong>
                 <div class="flex flex-col gap-2.5">
+
                     <a href="https://discord.gg/B3ZH9taVfT" target="_blank"
                         class="hover:opacity-80 transition-opacity block">
                         <img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fdiscord.com%2Fapi%2Finvites%2FB3ZH9taVfT%3Fwith_counts%3Dtrue&query=%24.approximate_member_count&logo=discord&logoColor=white&style=for-the-badge&label=BJORN&color=5865F2&labelColor=2A2E35"
-                            alt="Discord BJORN" class="w-full" />
+                            alt="Discord BJORN" class="w-full badge-sm" />
                     </a>
+
                     <a href="https://www.reddit.com/r/Bjorn_CyberViking/" target="_blank"
                         class="hover:opacity-80 transition-opacity block">
                         <img src="https://img.shields.io/reddit/subreddit-subscribers/Bjorn_CyberViking?style=for-the-badge&logo=reddit&label=r/Bjorn&color=FF4500&labelColor=2A2E35&logoColor=white"
-                            alt="Reddit" class="w-full" />
+                            alt="Reddit" class="w-full badge-sm" />
                     </a>
+
                     <a href="https://github.com/infinition/Bjorn" target="_blank"
                         class="hover:opacity-80 transition-opacity block">
                         <img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fapi.github.com%2Frepos%2Finfinition%2FBjorn&query=%24.stargazers_count&style=for-the-badge&logo=github&color=0B0C0E&labelColor=2A2E35&label=BJORN&logoColor=white"
-                            alt="GitHub BJORN" class="w-full" />
+                            alt="GitHub BJORN" class="w-full badge-sm" />
                     </a>
+
                     <a href="https://buymeacoffee.com/infinition" target="_blank"
                         class="hover:opacity-80 transition-opacity block pt-2 border-t border-hack-border/30 mt-1">
                         <img src="https://img.shields.io/badge/Buy%20Me%20a%20Coffee-ffdd00?style=for-the-badge&logo=buy-me-a-coffee&logoColor=black"
-                            alt="Buy Me A Coffee" class="w-full" />
+                            alt="Buy Me A Coffee" class="w-full badge-sm" />
                     </a>
+
                 </div>
             </div>
         </div>
+
     </aside>
 
     <!-- Mobile Sidebar (Right - TOC) -->
@@ -891,7 +912,7 @@
             hljs.highlightAll();
         }
 
-        // --- 5. CONTENT LOADER ---
+        // --- 5. CONTENT LOADER (PERSISTENT CACHE OPTIMIZED) ---
         async function loadContent(folder, title, filename, pushHistory = true) {
             const viewer = document.getElementById('markdown-viewer');
             const pageNav = document.getElementById('page-nav');
@@ -903,6 +924,7 @@
                 <span>${cleanFolder}</span> <span>/</span> <span class="text-hack-green font-bold">${title}</span>
             `;
 
+            // Only show loader if not in RAM cache
             if (!STATE.contentCache[`${folder}/${filename}`]) {
                 viewer.innerHTML = `<div class="animate-pulse space-y-4 pt-10"><div class="h-8 bg-gray-800 rounded w-1/3 mb-6"></div><div class="h-4 bg-gray-800 rounded w-full"></div><div class="h-4 bg-gray-800 rounded w-5/6"></div><div class="h-4 bg-gray-800 rounded w-4/6"></div></div>`;
             }
@@ -913,10 +935,30 @@
             try {
                 let text;
                 const cacheKey = `${folder}/${filename}`;
+                const storageKey = `bjorn_content_${cacheKey}`;
+                const now = Date.now();
+                const TTL = 3600 * 1000 * 24; // 24 Hours Cache
 
+                // 1. Check RAM (Fastest)
                 if (STATE.contentCache[cacheKey]) {
                     text = STATE.contentCache[cacheKey];
-                } else {
+                }
+                // 2. Check LocalStorage (Persistence)
+                else {
+                    const stored = localStorage.getItem(storageKey);
+                    if (stored) {
+                        try {
+                            const data = JSON.parse(stored);
+                            if (now - data.ts < TTL) {
+                                text = data.content;
+                                STATE.contentCache[cacheKey] = text; // Restore to RAM
+                            }
+                        } catch (e) { localStorage.removeItem(storageKey); }
+                    }
+                }
+
+                // 3. Network Fetch (Fallback)
+                if (!text) {
                     try {
                         const path1 = `./wiki/${folder}/${filename}`;
                         const res = await fetch(path1);
@@ -934,7 +976,15 @@
                             throw new Error(`Content not found.`);
                         }
                     }
+
+                    // Save to caches
                     STATE.contentCache[cacheKey] = text;
+                    try {
+                        localStorage.setItem(storageKey, JSON.stringify({
+                            ts: now,
+                            content: text
+                        }));
+                    } catch (e) { console.warn("LocalStorage full"); }
                 }
 
                 const cleanHTML = DOMPurify.sanitize(marked.parse(text));
@@ -1018,8 +1068,14 @@
             [idx - 1, idx + 1].forEach(i => {
                 if (flatList[i]) {
                     const url = `./wiki/${flatList[i].folder}/${flatList[i].file}`;
+                    const cacheKey = `${flatList[i].folder}/${flatList[i].file}`;
+
+                    // Check persistent cache first to avoid fetch
+                    const storageKey = `bjorn_content_${cacheKey}`;
+                    if (localStorage.getItem(storageKey)) return;
+
                     fetch(url).then(r => r.text()).then(t => {
-                        STATE.contentCache[`${flatList[i].folder}/${flatList[i].file}`] = t;
+                        STATE.contentCache[cacheKey] = t;
                     }).catch(() => { });
                 }
             });
