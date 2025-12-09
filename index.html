@@ -402,6 +402,7 @@
             }
 
             #sidebar,
+            #mobile-toc-sidebar,
             header,
             #theme-toggle-desktop,
             #scroll-top-btn,
@@ -512,7 +513,7 @@
         class="fixed inset-0 bg-black/80 backdrop-blur-[2px] z-[65] hidden transition-opacity opacity-0 md:hidden">
     </div>
 
-    <!-- Sidebar -->
+    <!-- Mobile Sidebar (Left - Menu) -->
     <aside id="sidebar"
         class="sidebar-mobile fixed top-0 bottom-0 left-0 z-[70] w-[280px] bg-hack-sidebar border-r border-hack-border transform -translate-x-full md:translate-x-0 md:static md:h-full flex flex-col shadow-2xl md:shadow-none transition-transform duration-300">
 
@@ -608,6 +609,20 @@
         </div>
     </aside>
 
+    <!-- Mobile Sidebar (Right - TOC) -->
+    <aside id="mobile-toc-sidebar"
+        class="sidebar-mobile fixed top-0 bottom-0 right-0 z-[70] w-[280px] bg-hack-sidebar border-l border-hack-border transform translate-x-full md:hidden flex flex-col shadow-2xl transition-transform duration-300">
+        <div class="p-4 border-b border-hack-border flex justify-between items-center bg-hack-bg/50">
+            <span class="text-xs font-bold text-gray-500 uppercase tracking-widest font-mono">Table of Contents</span>
+            <button id="close-toc-btn" class="text-gray-400 hover:text-white">
+                <i data-lucide="x" class="w-5 h-5"></i>
+            </button>
+        </div>
+        <div class="flex-1 overflow-y-auto p-4">
+            <ul id="mobile-toc-list" class="space-y-3 text-sm"></ul>
+        </div>
+    </aside>
+
     <div class="flex-1 flex flex-col h-full overflow-hidden relative">
         <main class="flex-1 overflow-y-auto bg-hack-bg scroll-smooth relative w-full" id="scroll-container">
             <div class="max-w-6xl mx-auto px-5 py-8 md:py-12 md:px-10 flex gap-10">
@@ -664,19 +679,15 @@
 
         // --- FIXED IMAGE RENDERER (Handles Marked 5.0+ Object Token) ---
         renderer.image = function (href, title, text) {
-            // New Marked versions pass an object as the first argument
             if (typeof href === 'object' && href !== null) {
                 const token = href;
                 href = token.href;
                 title = token.title;
                 text = token.text;
             }
-
-            // Handle relative paths for GitHub Pages if needed, usually browser handles it.
             return `<img src="${href}" alt="${text || ''}" title="${title || ''}" loading="lazy" class="rounded-lg border border-hack-border bg-black/20">`;
         };
 
-        // Table styling
         renderer.table = function (header, body) {
             return `<div class="overflow-x-auto my-4 border border-hack-border rounded-lg"><table class="w-full text-left text-sm border-collapse"><thead>${header}</thead><tbody>${body}</tbody></table></div>`;
         };
@@ -726,8 +737,6 @@
         initTheme();
 
         // --- 3. FETCH DATA (GitHub API) ---
-        // Includes Cache to avoid GitHub API Rate Limiting (60 requests/hr for unauth)
-
         async function fetchLatestVersion() {
             const CACHE_KEY = 'bjorn_ver_data';
             const now = Date.now();
@@ -744,14 +753,12 @@
 
             try {
                 let ver = "v2.0";
-                // Try Releases first
                 let res = await fetch(`https://api.github.com/repos/${STATE.repo}/releases/latest`);
 
                 if (res.ok) {
                     const data = await res.json();
                     ver = data.tag_name;
                 } else {
-                    // Fallback to tags
                     res = await fetch(`https://api.github.com/repos/${STATE.repo}/tags`);
                     if (res.ok) {
                         const tags = await res.json();
@@ -763,7 +770,6 @@
                 updateVersionUI(ver, true);
             } catch (e) {
                 console.warn("GitHub API Limit or Network Error", e);
-                // Fallback to cached version even if old, or default
                 if (cached) updateVersionUI(JSON.parse(cached).version, true);
                 else updateVersionUI("v2.0", false);
             }
@@ -779,7 +785,6 @@
         // --- 4. WIKI CORE ---
         async function initWiki() {
             try {
-                // IMPORTANT: Fetch relative to index.html
                 const res = await fetch('./wiki/structure.json');
 
                 if (!res.ok) {
@@ -789,20 +794,17 @@
 
                 STATE.wikiData = await res.json();
 
-                // Expand first folder by default
                 const firstFolder = Object.keys(STATE.wikiData)[0];
                 if (firstFolder) STATE.expandedSections.add(firstFolder);
 
                 renderSidebar();
-                buildSearchIndex(); // Background
+                buildSearchIndex();
 
-                // History handling
                 window.onpopstate = (event) => {
                     if (event.state) {
                         if (event.state.page === 'versions') toggleVersionsPage(null, false);
                         else loadContent(event.state.folder, event.state.title, event.state.filename, false);
                     } else {
-                        // Check URL params on back button to root
                         handleInitialRoute();
                     }
                 };
@@ -822,11 +824,9 @@
             if (pageParam === 'changelog') {
                 toggleVersionsPage(null, false);
             } else if (pageParam) {
-                // pageParam format: "Folder/Filename.md" or similar
                 let found = false;
                 for (const [folder, files] of Object.entries(STATE.wikiData)) {
                     for (const [title, file] of Object.entries(files)) {
-                        // Check strict match or loose match
                         if (`${folder}/${file}` === pageParam || file === pageParam) {
                             loadContent(folder, title, file, false);
                             STATE.expandedSections.add(folder);
@@ -847,7 +847,6 @@
             const promises = [];
             for (const [folder, files] of Object.entries(STATE.wikiData)) {
                 for (const [title, filename] of Object.entries(files)) {
-                    // Skip if not markdown
                     if (!filename.endsWith('.md')) continue;
 
                     promises.push(
@@ -888,18 +887,6 @@
             document.getElementById('markdown-viewer').innerHTML = `
                 <h1>Wiki Setup Guide</h1>
                 <p>Welcome to your new Wiki Node. To enable content, please ensure your repository structure matches the config.</p>
-                <div class="p-4 bg-gray-800 rounded border border-gray-700">
-                    <h3 class="text-white mt-0">Required Structure</h3>
-                    <pre><code class="language-bash">/ (Root)
-├── index.html
-├── .nojekyll  <-- IMPORTANT for GitHub Pages
-├── assets/
-│   └── bjorn.png
-└── wiki/
-    ├── structure.json
-    └── 01_General/
-        └── Introduction.md</code></pre>
-                </div>
             `;
             hljs.highlightAll();
         }
@@ -910,14 +897,12 @@
             const pageNav = document.getElementById('page-nav');
             const scrollContainer = document.getElementById('scroll-container');
 
-            // Set Breadcrumbs early so they appear even if loading fails/takes time
             const cleanFolder = folder.replace(/^\d+_/, '').replace(/_/g, ' ');
             document.getElementById('breadcrumbs').innerHTML = `
                 <span class="hover:text-hack-heading cursor-pointer" onclick="loadDefault()">wiki</span> <span>/</span> 
                 <span>${cleanFolder}</span> <span>/</span> <span class="text-hack-green font-bold">${title}</span>
             `;
 
-            // UI Reset
             if (!STATE.contentCache[`${folder}/${filename}`]) {
                 viewer.innerHTML = `<div class="animate-pulse space-y-4 pt-10"><div class="h-8 bg-gray-800 rounded w-1/3 mb-6"></div><div class="h-4 bg-gray-800 rounded w-full"></div><div class="h-4 bg-gray-800 rounded w-5/6"></div><div class="h-4 bg-gray-800 rounded w-4/6"></div></div>`;
             }
@@ -929,11 +914,9 @@
                 let text;
                 const cacheKey = `${folder}/${filename}`;
 
-                // 1. Get Markdown
                 if (STATE.contentCache[cacheKey]) {
                     text = STATE.contentCache[cacheKey];
                 } else {
-                    // ATTEMPT 1: Structure Path
                     try {
                         const path1 = `./wiki/${folder}/${filename}`;
                         const res = await fetch(path1);
@@ -943,41 +926,33 @@
                             throw new Error("404");
                         }
                     } catch (e) {
-                        // ATTEMPT 2: Flat Path (Fallback) - "AUTO-FIX"
-                        console.warn(`Attempt 1 failed for ${folder}/${filename}. Trying flat path...`);
                         const path2 = `./wiki/${filename}`;
                         const res2 = await fetch(path2);
                         if (res2.ok) {
                             text = await res2.text();
                         } else {
-                            // If both fail, throw detailed error
-                            throw new Error(`Content not found. Tried:\n1. ./wiki/${folder}/${filename}\n2. ./wiki/${filename}`);
+                            throw new Error(`Content not found.`);
                         }
                     }
                     STATE.contentCache[cacheKey] = text;
                 }
 
-                // 2. Render
                 const cleanHTML = DOMPurify.sanitize(marked.parse(text));
                 viewer.innerHTML = cleanHTML;
 
-                // 3. Stats
                 const wordCount = text.replace(/[#*`]/g, '').split(/\s+/).length;
                 document.getElementById('reading-time').textContent = `~${Math.ceil(wordCount / 200)} min read`;
                 fetchLastUpdated(folder, filename);
 
-                // 4. UI Enhancements
                 enhanceMarkdownContent();
                 generateTOC();
                 renderPagination(folder, title);
 
-                // 6. Navigation / History
                 if (pushHistory) {
                     const newUrl = `?page=${folder}/${filename}`;
                     window.history.pushState({ folder, title, filename }, "", newUrl);
                 }
 
-                // 7. Scroll
                 STATE.expandedSections = new Set([folder]);
                 renderSidebar();
                 if (window.location.hash) {
@@ -989,7 +964,6 @@
 
                 if (window.innerWidth < 768) closeMenu();
 
-                // 8. Preload next/prev
                 preloadAdjacent(folder, title);
 
             } catch (e) {
@@ -999,20 +973,12 @@
                     <h1 class="text-red-500 mb-2">Page Not Found</h1>
                     <div class="p-4 bg-red-900/20 border border-red-900 rounded text-sm font-mono text-red-300">
                         <strong>Error Details:</strong><br>${cleanError}
-                    </div>
-                    <p class="mt-4 text-gray-400 text-sm">
-                        <strong>Troubleshooting:</strong><br>
-                        1. Ensure the file exists in your <code>wiki/</code> folder.<br>
-                        2. Check capitalization (Linux/GitHub is case-sensitive).<br>
-                        3. Verify <code>.nojekyll</code> is at the root of your repo.
-                    </p>`;
+                    </div>`;
 
-                // Breadcrumbs Fallback
                 document.getElementById('breadcrumbs').innerHTML = `<span class="hover:text-hack-heading cursor-pointer" onclick="loadDefault()">wiki</span> <span>/</span> <span class="text-red-500">Error</span>`;
             }
         }
 
-        // Cache last updated to prevent API ban
         async function fetchLastUpdated(folder, filename) {
             const CACHE_KEY = `bjorn_upd_${folder}_${filename}`;
             const now = Date.now();
@@ -1020,14 +986,13 @@
             const cached = localStorage.getItem(CACHE_KEY);
             if (cached) {
                 const data = JSON.parse(cached);
-                if (now - data.ts < 86400000) { // 24h cache
+                if (now - data.ts < 86400000) {
                     document.getElementById('last-updated').textContent = `Updated: ${data.date}`;
                     return;
                 }
             }
 
             try {
-                // Rate limit protection
                 const path = `wiki/${folder}/${filename}`;
                 const res = await fetch(`https://api.github.com/repos/${STATE.repo}/commits?path=${path}&page=1&per_page=1`);
                 if (res.ok) {
@@ -1038,9 +1003,7 @@
                         localStorage.setItem(CACHE_KEY, JSON.stringify({ ts: now, date }));
                     }
                 }
-            } catch (e) {
-                // Silent fail
-            }
+            } catch (e) { }
         }
 
         function preloadAdjacent(currentFolder, currentTitle) {
@@ -1063,7 +1026,6 @@
         }
 
         function enhanceMarkdownContent() {
-            // Anchor Links Generation (Same ID logic as before)
             document.querySelectorAll('#markdown-viewer h2, #markdown-viewer h3').forEach(h => {
                 if (!h.id) h.id = h.textContent.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
 
@@ -1080,20 +1042,14 @@
                 h.appendChild(anchor);
             });
 
-            // NEW: Fix Manual TOC Links (Smart Handler)
-            // This catches clicks on generated TOC links like [Introduction](#-introduction)
             document.querySelectorAll('#markdown-viewer a[href^="#"]').forEach(link => {
-                // Ignore the anchor links we just created above (class anchor-link)
                 if (link.classList.contains('anchor-link')) return;
 
                 link.onclick = (e) => {
                     e.preventDefault();
-                    const hash = link.getAttribute('href').substring(1); // remove #
-
-                    // 1. Try exact match (e.g. if ID matches TOC exactly)
+                    closeTOC(); // Close mobile TOC if open
+                    const hash = link.getAttribute('href').substring(1);
                     let target = document.getElementById(hash);
-
-                    // 2. Fallback: Try removing leading dashes (Fixes GitHub style TOC vs JS generated IDs)
                     if (!target) {
                         const cleanHash = hash.replace(/^-+/, '');
                         target = document.getElementById(cleanHash);
@@ -1102,16 +1058,12 @@
                     if (target) {
                         target.scrollIntoView({ behavior: 'smooth' });
                         history.pushState(null, null, `#${hash}`);
-                    } else {
-                        console.warn('Anchor target not found:', hash);
                     }
                 };
             });
 
-            // Syntax Highlight
             document.querySelectorAll('pre code').forEach((el) => hljs.highlightElement(el));
 
-            // Copy Buttons
             document.querySelectorAll('pre').forEach(pre => {
                 if (pre.querySelector('.copy-btn')) return;
                 const btn = document.createElement('button');
@@ -1126,31 +1078,20 @@
                 pre.appendChild(btn);
             });
 
-            // Images -> Lightbox
             document.querySelectorAll('#markdown-viewer img').forEach(img => {
                 img.onclick = () => openLightbox(img.src);
             });
 
-            // External Links
             document.querySelectorAll('#markdown-viewer a').forEach(a => {
-
-                // Skip if:
-                // - link is internal
-                // - it's an anchor-link
-                // - it has no href
-                // - href starts with "#"
-                // - link contains an <img> → prevents icon under badges
                 if (
                     a.hostname !== window.location.hostname &&
                     !a.classList.contains('anchor-link') &&
                     a.getAttribute('href') &&
                     !a.getAttribute('href').startsWith('#') &&
-                    !a.querySelector('img') // ⬅ NEW: do NOT add icon when link wraps an image
+                    !a.querySelector('img')
                 ) {
                     a.target = '_blank';
                     a.rel = 'noopener noreferrer';
-
-                    // Add external icon
                     a.innerHTML +=
                         ' <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="inline-block opacity-50"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>';
                 }
@@ -1170,7 +1111,6 @@
             const idx = flatList.findIndex(item => item.folder === currentFolder && item.title === currentTitle);
             if (idx === -1) return;
 
-            // Prev
             if (idx > 0) {
                 const prev = flatList[idx - 1];
                 const btn = document.createElement('button');
@@ -1180,7 +1120,6 @@
                 navContainer.appendChild(btn);
             } else { navContainer.appendChild(document.createElement('div')); }
 
-            // Next
             if (idx < flatList.length - 1) {
                 const next = flatList[idx + 1];
                 const btn = document.createElement('button');
@@ -1192,26 +1131,45 @@
         }
 
         function generateTOC() {
-            const toc = document.getElementById('toc-container');
+            const desktopToc = document.getElementById('toc-container');
+            const mobileToc = document.getElementById('mobile-toc-list');
             const headings = document.querySelectorAll('#markdown-viewer h2, #markdown-viewer h3');
-            toc.innerHTML = '';
-            if (headings.length === 0) {
-                toc.innerHTML = '<li class="text-gray-600 italic">No sections</li>';
-                return;
-            }
-            headings.forEach(h => {
+
+            const createTOCItem = (h, isMobile) => {
                 const li = document.createElement('li');
                 const link = document.createElement('a');
-                link.textContent = h.childNodes[0].textContent; // ignore anchor link
+                link.textContent = h.childNodes[0].textContent;
                 link.href = `#${h.id}`;
-                link.className = `toc-link block py-1 pl-2 border-l-2 border-transparent hover:text-hack-green transition-colors truncate ${h.tagName === 'H3' ? 'ml-3 opacity-80' : ''}`;
+                // Different styling for desktop vs mobile
+                if (isMobile) {
+                    link.className = `block py-2 text-gray-400 hover:text-hack-green border-l-2 border-transparent pl-3 transition-colors ${h.tagName === 'H3' ? 'ml-4 text-xs' : 'font-medium'}`;
+                } else {
+                    link.className = `toc-link block py-1 pl-2 border-l-2 border-transparent hover:text-hack-green transition-colors truncate ${h.tagName === 'H3' ? 'ml-3 opacity-80' : ''}`;
+                }
+
                 link.onclick = (e) => {
                     e.preventDefault();
+                    if (isMobile) closeTOC();
                     document.getElementById(h.id).scrollIntoView({ behavior: 'smooth' });
                     history.pushState(null, null, `#${h.id}`);
                 };
                 li.appendChild(link);
-                toc.appendChild(li);
+                return li;
+            };
+
+            // Reset
+            desktopToc.innerHTML = '';
+            mobileToc.innerHTML = '';
+
+            if (headings.length === 0) {
+                desktopToc.innerHTML = '<li class="text-gray-600 italic">No sections</li>';
+                mobileToc.innerHTML = '<li class="text-gray-600 italic text-center py-4">No sections available for this page.</li>';
+                return;
+            }
+
+            headings.forEach(h => {
+                desktopToc.appendChild(createTOCItem(h, false));
+                mobileToc.appendChild(createTOCItem(h, true));
             });
         }
 
@@ -1250,7 +1208,7 @@
                     hasContent = true;
                     const filename = STATE.wikiData[folder][title];
                     const link = document.createElement('a');
-                    link.href = `?page=${folder}/${filename}`; // Fallback href
+                    link.href = `?page=${folder}/${filename}`;
                     link.className = 'nav-link group flex items-center gap-3 px-2 py-1.5 rounded-md text-sm font-medium text-gray-400 hover:text-hack-heading hover:bg-hack-bg transition-all outline-none focus:bg-hack-bg';
                     link.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-hack-border group-hover:bg-hack-green flex-shrink-0 transition-colors"></span> ${title}`;
                     link.onclick = (e) => {
@@ -1298,7 +1256,6 @@
                         }
                     });
                 } else {
-                    // Fallback
                     for (const [folder, files] of Object.entries(STATE.wikiData)) {
                         for (const [title, file] of Object.entries(files)) {
                             if (title.toLowerCase().includes(q)) {
@@ -1330,7 +1287,6 @@
             if (pushHistory) window.history.pushState({ page: 'versions' }, "", "?page=changelog");
 
             try {
-                // Get releases from API
                 const res = await fetch(`https://api.github.com/repos/${STATE.repo}/releases`);
                 if (!res.ok) throw new Error("API Limit");
                 const data = await res.json();
@@ -1354,7 +1310,7 @@
                     list.appendChild(div);
                 });
             } catch (e) {
-                document.getElementById('versions-list').innerHTML = `<p class="text-red-400">Unable to load changelog (GitHub API Rate Limit might be reached). Please check back later.</p>`;
+                document.getElementById('versions-list').innerHTML = `<p class="text-red-400">Unable to load changelog. Check back later.</p>`;
             }
         }
 
@@ -1375,14 +1331,54 @@
             document.body.style.overflow = '';
         }
 
-        // Mobile Menu
+        // Mobile Menu & TOC Logic
         const sidebar = document.getElementById('sidebar');
+        const tocSidebar = document.getElementById('mobile-toc-sidebar');
         const overlay = document.getElementById('overlay');
-        function openMenu() { sidebar.classList.remove('-translate-x-full'); overlay.classList.remove('hidden'); setTimeout(() => overlay.classList.remove('opacity-0'), 10); }
-        function closeMenu() { sidebar.classList.add('-translate-x-full'); overlay.classList.add('opacity-0'); setTimeout(() => overlay.classList.add('hidden'), 300); }
+
+        function openMenu() {
+            closeTOC(); // Close TOC if open
+            sidebar.classList.remove('-translate-x-full');
+            overlay.classList.remove('hidden');
+            setTimeout(() => overlay.classList.remove('opacity-0'), 10);
+        }
+        function closeMenu() {
+            sidebar.classList.add('-translate-x-full');
+            checkOverlay();
+        }
+
+        function openTOC() {
+            // Only open if TOC has items
+            const list = document.getElementById('mobile-toc-list');
+            if (!list.hasChildNodes() || list.innerHTML.includes('No sections')) return;
+
+            closeMenu(); // Close Menu if open
+            tocSidebar.classList.remove('translate-x-full');
+            overlay.classList.remove('hidden');
+            setTimeout(() => overlay.classList.remove('opacity-0'), 10);
+        }
+        function closeTOC() {
+            tocSidebar.classList.add('translate-x-full');
+            checkOverlay();
+        }
+
+        function checkOverlay() {
+            // Hide overlay only if both panels are closed
+            if (sidebar.classList.contains('-translate-x-full') && tocSidebar.classList.contains('translate-x-full')) {
+                overlay.classList.add('opacity-0');
+                setTimeout(() => overlay.classList.add('hidden'), 300);
+            }
+        }
+
         document.getElementById('menu-btn').onclick = openMenu;
         document.getElementById('close-sidebar-btn').onclick = closeMenu;
-        overlay.onclick = closeMenu;
+        document.getElementById('close-toc-btn').onclick = closeTOC;
+
+        // Unified overlay click closes whichever is open
+        overlay.onclick = () => {
+            closeMenu();
+            closeTOC();
+        };
 
         // Events
         document.addEventListener('keydown', (e) => {
@@ -1390,7 +1386,10 @@
             if (e.key === 'Escape') {
                 if (document.activeElement === searchInput) searchInput.blur();
                 else if (lightbox.classList.contains('active')) closeLightbox();
-                else closeMenu();
+                else {
+                    closeMenu();
+                    closeTOC();
+                }
             }
         });
 
@@ -1407,7 +1406,6 @@
                     const scrollPercent = (scrollHeight > 0) ? (scrollTop / scrollHeight) * 100 : 0;
                     progressBar.style.width = scrollPercent + '%';
 
-                    // Show/Hide Scroll Top Button
                     if (scrollTop > 300) scrollBtn.classList.remove('hidden');
                     else scrollBtn.classList.add('hidden');
                 });
@@ -1416,16 +1414,17 @@
                 scrollBtn.onclick = () => scrollContainer.scrollTo({ top: 0, behavior: 'smooth' });
             }
         }
+
         // --- MOBILE SWIPE GESTURES ---
-        // Detect swipe from left edge → open menu
         let touchStartX = 0;
         let touchStartY = 0;
         let touchEndX = 0;
         let touchEndY = 0;
 
-        const MIN_SWIPE_DISTANCE = 50;     // minimal movement to count as a swipe
-        const MAX_VERTICAL_DRIFT = 80;     // tolerance to avoid accidental scroll/swipe mix
-        const EDGE_ZONE = 200;              // swipe must start within 200px from screen left
+        const MIN_SWIPE_DISTANCE = 50;
+        const MAX_VERTICAL_DRIFT = 80;
+        const EDGE_ZONE_LEFT = 200; // Swipe from left triggers Menu
+        const EDGE_ZONE_RIGHT = 100; // Distance from right edge to likely trigger TOC
 
         document.addEventListener("touchstart", (e) => {
             const t = e.changedTouches[0];
@@ -1442,22 +1441,31 @@
         document.addEventListener("touchend", () => {
             const dx = touchEndX - touchStartX;
             const dy = Math.abs(touchEndY - touchStartY);
+            const screenW = window.innerWidth;
 
-            // 1. SWIPE → RIGHT = OPEN MENU
-            if (
-                touchStartX < EDGE_ZONE &&      // gesture started at screen left
-                dx > MIN_SWIPE_DISTANCE &&      // swiped enough to the right
-                dy < MAX_VERTICAL_DRIFT         // not a vertical scroll
-            ) {
-                openMenu();
+            // 1. SWIPE LEFT -> RIGHT (Open Menu or Close TOC)
+            if (dx > MIN_SWIPE_DISTANCE && dy < MAX_VERTICAL_DRIFT) {
+                // If TOC is open, close it
+                if (!tocSidebar.classList.contains('translate-x-full')) {
+                    closeTOC();
+                }
+                // Else if swipe starts near left edge, open Menu
+                else if (touchStartX < EDGE_ZONE_LEFT) {
+                    openMenu();
+                }
             }
 
-            // 2. SWIPE → LEFT = CLOSE MENU
-            if (
-                dx < -MIN_SWIPE_DISTANCE &&     // swipe left
-                dy < MAX_VERTICAL_DRIFT         // again avoid scroll false positives
-            ) {
-                closeMenu();
+            // 2. SWIPE RIGHT -> LEFT (Open TOC or Close Menu)
+            if (dx < -MIN_SWIPE_DISTANCE && dy < MAX_VERTICAL_DRIFT) {
+                // If Menu is open, close it
+                if (!sidebar.classList.contains('-translate-x-full')) {
+                    closeMenu();
+                }
+                // Else if swipe starts anywhere (or strictly right side if preferred), open TOC
+                // User asked for "swipe right to left" generally, but preventing conflict with horizontal scroll tables is good
+                else {
+                    openTOC();
+                }
             }
         });
 
