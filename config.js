@@ -4,9 +4,9 @@
  */
 const CONFIG = {
     // Project Information
-    projectName: "ACIDWIKI",
-    projectSubtitle: "WIKI NODE",
-    description: "Official Documentation and Wiki Template",
+    projectName: "BJORN",
+    projectSubtitle: "BJORN WIKI",
+    description: "Official Documentation and Wiki for BJORN Cyber Viking",
 
     // Versioning Settings
     // type: "github" (automatic from API) or "local" (manual)
@@ -18,7 +18,7 @@ const CONFIG = {
 
     // GitHub Repository (for version checking when type is "github")
     // Format: "username/repo"
-    repo: "infinition/Bjorn",
+    repo: "Bjorn/Bjorn",
     branch: "wiki",
 
     // Theme Settings
@@ -66,7 +66,7 @@ const CONFIG = {
     },
 
     // Footer Customization
-    footerText: "© 2026 ACIDWIKI - All rights reserved",
+    footerText: "© 2026 BJORN WIKI - All rights reserved",
 
     // UI Strings (Custom labels for the interface)
     ui: {
@@ -103,7 +103,7 @@ const CONFIG = {
     // Badge Labels (Optional customization for shields.io)
     badges: {
         discordLabel: "COMMUNITY",
-        redditLabel: "r/ACIDWIKI",
-        githubLabel: "ACIDWIKI"
+        redditLabel: "r/BJORN",
+        githubLabel: "BJORN WIKI"
     }
 };
