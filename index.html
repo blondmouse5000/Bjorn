@@ -4,8 +4,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>BJORN // WIKI NODE</title>
-    <meta name="description" content="Official Documentation and Wiki for BJORN Cyber Viking">
+    <title id="site-title">BJORN // WIKI NODE</title>
+    <meta name="description" id="meta-description" content="Official Documentation and Wiki for BJORN Cyber Viking">
+
+    <!-- Configuration -->
+    <script src="config.js"></script>
+
+    <!-- Dynamic Theme -->
+    <link id="theme-link" rel="stylesheet" href="">
 
     <!-- Tailwind CSS (CDN) -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -31,28 +37,8 @@
 
     <style>
         /* --- THEME ENGINE (CSS Variables) --- */
-        :root {
-            --bg-body: #0B0C0E;
-            --bg-sidebar: #111214;
-            --border-color: #2A2E35;
-            --text-main: #A0AAB8;
-            --text-heading: #E2E8F0;
-            --accent-green: #22c55e;
-            --accent-dim: rgba(34, 197, 94, 0.1);
-            --code-bg: #1e1e1e;
-        }
+        /* Variables are now loaded from themes/*.css */
 
-        /* Light Mode Overrides */
-        html.light {
-            --bg-body: #F8FAFC;
-            --bg-sidebar: #FFFFFF;
-            --border-color: #E2E8F0;
-            --text-main: #475569;
-            --text-heading: #1E293B;
-            --accent-green: #16a34a;
-            --accent-dim: rgba(22, 163, 74, 0.1);
-            --code-bg: #f1f5f9;
-        }
 
         /* Base Settings */
         body {
@@ -345,7 +331,26 @@
         /* TOC & Scroll */
         .toc-link.active {
             color: var(--accent-green);
-            border-left-color: var(--accent-green);
+        }
+
+        #toc-svg {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            overflow: visible;
+            z-index: 10;
+        }
+
+        #toc-path {
+            transition: d 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+            opacity: 0;
+        }
+
+        #toc-path.active {
+            opacity: 1;
         }
 
         #scroll-top-btn {
@@ -458,6 +463,75 @@
                 margin-bottom: 20px;
             }
         }
+
+        /* Toast Notification */
+        #toast-container {
+            position: fixed;
+            bottom: 2rem;
+            left: 50%;
+            transform: translateX(-50%) translateY(100px);
+            background-color: var(--bg-sidebar);
+            color: var(--accent-green);
+            border: 1px solid var(--accent-green);
+            padding: 0.75rem 1.5rem;
+            border-radius: 9999px;
+            font-size: 0.875rem;
+            font-weight: 600;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);
+            z-index: 200;
+            transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s;
+            opacity: 0;
+            pointer-events: none;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        #toast-container.active {
+            transform: translateX(-50%) translateY(0);
+            opacity: 1;
+        }
+
+        /* --- PAGE TRANSITIONS --- */
+        .content-transition-area {
+            view-transition-name: content-transition;
+        }
+
+        ::view-transition-old(content-transition) {
+            animation: blur-scale-fade-out 0.3s cubic-bezier(0.455, 0.03, 0.515, 0.955) forwards;
+        }
+
+        ::view-transition-new(content-transition) {
+            animation: blur-scale-fade-in 0.5s cubic-bezier(0.455, 0.03, 0.515, 0.955) forwards;
+        }
+
+        @keyframes blur-scale-fade-out {
+            from {
+                filter: blur(0);
+                transform: scale(1);
+                opacity: 1;
+            }
+
+            to {
+                filter: blur(4px);
+                transform: scale(1.05);
+                opacity: 0;
+            }
+        }
+
+        @keyframes blur-scale-fade-in {
+            from {
+                filter: blur(4px);
+                transform: scale(0.95);
+                opacity: 0;
+            }
+
+            to {
+                filter: blur(0);
+                transform: scale(1);
+                opacity: 1;
+            }
+        }
     </style>
 
     <script>
@@ -487,6 +561,12 @@
 
     <div id="reading-progress-bar"></div>
 
+    <!-- Toast Notification -->
+    <div id="toast-container">
+        <i data-lucide="check-circle" class="w-4 h-4"></i>
+        <span id="toast-message"></span>
+    </div>
+
     <!-- Lightbox -->
     <div id="lightbox"
         class="fixed inset-0 z-[100] bg-black/90 backdrop-blur-sm flex items-center justify-center opacity-0 invisible cursor-zoom-out"
@@ -500,23 +580,25 @@
         class="md:hidden flex-none bg-hack-sidebar border-b border-hack-border h-16 flex items-center justify-between px-4 z-[60] relative shadow-lg">
         <div class="flex items-center gap-3">
             <div class="w-10 h-10">
-                <img src="assets/bjorn.png" onerror="this.src='https://placehold.co/40x40/111214/22c55e?text=B'"
-                    alt="Bjorn Icon" class="w-full h-full object-contain drop-shadow-[0_0_5px_rgba(34,197,94,0.3)]">
+                <img id="mobile-logo" src="assets/bjorn.png"
+                    onerror="this.src='https://placehold.co/40x40/111214/22c55e?text=B'" alt="Logo"
+                    class="w-full h-full object-contain drop-shadow-[0_0_5px_rgba(34,197,94,0.3)]">
             </div>
             <span class="font-bold text-hack-heading tracking-wide flex items-center gap-2">
-                BJORN <span class="version-display text-hack-green text-[10px] font-mono opacity-80 pt-1">...</span>
+                <span id="mobile-project-name">BJORN</span> <span
+                    class="version-display text-hack-green text-[10px] font-mono opacity-80 pt-1">...</span>
             </span>
         </div>
 
         <div class="flex items-center gap-3">
             <button id="theme-toggle-mobile"
-                class="text-gray-300 dark:text-gray-200 hover:text-hack-green p-2 transition-colors">
-                <i data-lucide="sun" class="w-5 h-5 hidden dark:block"></i>
-                <i data-lucide="moon" class="w-5 h-5 block dark:hidden"></i>
+                class="text-gray-300 dark:text-gray-200 hover:text-hack-green p-2 transition-colors"
+                title="Switch Theme">
+                <i data-lucide="palette" class="w-5 h-5"></i>
             </button>
             <button id="menu-btn"
                 class="flex items-center gap-2 px-3 py-1.5 rounded bg-hack-bg border border-hack-border text-hack-heading active:bg-hack-greenDim transition-colors">
-                <span class="text-xs font-mono font-bold uppercase tracking-wider">Menu</span>
+                <span id="label-menu" class="text-xs font-mono font-bold uppercase tracking-wider">Menu</span>
                 <i data-lucide="menu" class="w-5 h-5 text-hack-green"></i>
             </button>
         </div>
@@ -539,12 +621,13 @@
             <div class="flex items-center justify-between mb-4">
                 <div class="flex items-center gap-3">
                     <div class="w-12 h-12 shrink-0">
-                        <img src="assets/bjorn.png" onerror="this.src='https://placehold.co/48x48/111214/22c55e?text=B'"
-                            alt="Bjorn Icon"
+                        <img id="sidebar-logo" src="assets/bjorn.png"
+                            onerror="this.src='https://placehold.co/48x48/111214/22c55e?text=B'" alt="Logo"
                             class="w-full h-full object-contain drop-shadow-[0_0_8px_rgba(34,197,94,0.4)]">
                     </div>
                     <div>
-                        <h1 class="font-bold text-hack-heading leading-none text-lg">BJORN</h1>
+                        <h1 id="sidebar-project-name" class="font-bold text-hack-heading leading-none text-lg">BJORN
+                        </h1>
                         <p class="version-display text-[10px] text-gray-500 font-mono mt-1 flex items-center gap-2">
                             <span class="version-loading">checking...</span>
                         </p>
@@ -565,6 +648,7 @@
         </div>
 
         <div class="flex-1 overflow-y-auto flex flex-col" role="navigation" aria-label="Main Navigation">
+            <div id="custom-links-top" class="px-3 pt-2 space-y-1"></div>
             <div class="px-3 pt-4">
                 <div class="nav-group mb-1">
                     <button id="btn-versions"
@@ -572,7 +656,7 @@
                         onclick="toggleVersionsPage(this)" tabindex="0">
                         <div
                             class="flex items-center gap-2 text-[11px] font-bold uppercase tracking-widest font-mono text-hack-green">
-                            <i data-lucide="history" class="w-3 h-3"></i> Changelog
+                            <i data-lucide="history" class="w-3 h-3"></i> <span id="label-changelog">Changelog</span>
                         </div>
                         <i data-lucide="chevron-right"
                             class="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity"></i>
@@ -585,45 +669,28 @@
                     <div
                         class="w-4 h-4 border-2 border-hack-green border-t-transparent rounded-full animate-spin mx-auto mb-2">
                     </div>
-                    Initializing...
+                    <span id="label-initializing">Initializing...</span>
                 </div>
             </nav>
 
-            <div id="search-results-msg" class="hidden px-4 py-2 text-xs text-red-400 text-center italic">
-                No results found.
-            </div>
-        </div>
+            <div id="custom-links-bottom" class="px-3 pb-4 space-y-1"></div>
 
-        <div class="p-4 border-t border-hack-border bg-hack-bg/30 flex-none">
-            <div class="text-center">
-                <strong class="text-gray-500 text-sm block mb-3 font-mono tracking-wide">:: JOIN US ::</strong>
-                <div class="flex flex-col">
-
-                    <a href="https://discord.gg/B3ZH9taVfT" target="_blank"
-                        class="hover:opacity-80 transition-opacity block">
-                        <img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fdiscord.com%2Fapi%2Finvites%2FB3ZH9taVfT%3Fwith_counts%3Dtrue&query=%24.approximate_member_count&logo=discord&logoColor=white&style=for-the-badge&label=BJORN&color=5865F2&labelColor=2A2E35"
-                            alt="Discord BJORN" class="w-full badge-sm" />
-                    </a>
-
-                    <a href="https://www.reddit.com/r/Bjorn_CyberViking/" target="_blank"
-                        class="hover:opacity-80 transition-opacity block">
-                        <img src="https://img.shields.io/reddit/subreddit-subscribers/Bjorn_CyberViking?style=for-the-badge&logo=reddit&label=r/Bjorn&color=FF4500&labelColor=2A2E35&logoColor=white"
-                            alt="Reddit" class="w-full badge-sm" />
-                    </a>
-
-                    <a href="https://github.com/infinition/Bjorn" target="_blank"
-                        class="hover:opacity-80 transition-opacity block">
-                        <img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fapi.github.com%2Frepos%2Finfinition%2FBjorn&query=%24.stargazers_count&style=for-the-badge&logo=github&color=0B0C0E&labelColor=2A2E35&label=BJORN&logoColor=white"
-                            alt="GitHub BJORN" class="w-full badge-sm" />
-                    </a>
-
-                    <a href="https://buymeacoffee.com/infinition" target="_blank"
-                        class="hover:opacity-80 transition-opacity block pt-2 border-t border-hack-border/30 mt-1">
-                        <img src="https://img.shields.io/badge/Buy%20Me%20a%20Coffee-ffdd00?style=for-the-badge&logo=buy-me-a-coffee&logoColor=black"
-                            alt="Buy Me A Coffee" class="w-full badge-sm" />
-                    </a>
-
+            <div id="social-section" class="p-4 border-t border-hack-border bg-hack-bg/30 flex-none">
+                <div id="search-results-msg" class="hidden px-4 py-2 text-xs text-red-400 text-center italic">
+                    No results found.
                 </div>
+                <div class="text-center">
+                    <strong id="label-join-us" class="text-gray-500 text-sm block mb-3 font-mono tracking-wide">:: JOIN
+                        US ::</strong>
+                    <div id="social-links" class="flex flex-col">
+                        <!-- Social links will be injected by JS -->
+                    </div>
+                </div>
+            </div>
+
+            <div id="sidebar-footer"
+                class="p-4 border-t border-hack-border bg-hack-bg/50 text-[10px] text-gray-500 font-mono text-center">
+                <!-- Footer text will be injected by JS -->
             </div>
         </div>
 
@@ -633,7 +700,8 @@
     <aside id="mobile-toc-sidebar"
         class="sidebar-mobile fixed top-0 bottom-0 right-0 z-[70] w-[280px] bg-hack-sidebar border-l border-hack-border transform translate-x-full md:hidden flex flex-col shadow-2xl transition-transform duration-300">
         <div class="p-4 border-b border-hack-border flex justify-between items-center bg-hack-bg/50">
-            <span class="text-xs font-bold text-gray-500 uppercase tracking-widest font-mono">Table of Contents</span>
+            <span id="label-mobile-toc"
+                class="text-xs font-bold text-gray-500 uppercase tracking-widest font-mono">Table of Contents</span>
             <button id="close-toc-btn" class="text-gray-400 hover:text-white">
                 <i data-lucide="x" class="w-5 h-5"></i>
             </button>
@@ -646,7 +714,7 @@
     <div class="flex-1 flex flex-col h-full overflow-hidden relative">
         <main class="flex-1 overflow-y-auto bg-hack-bg scroll-smooth relative w-full" id="scroll-container">
             <div class="max-w-6xl mx-auto px-5 py-8 md:py-12 md:px-10 flex gap-10">
-                <div class="flex-1 min-w-0">
+                <div class="flex-1 min-w-0 content-transition-area">
                     <div
                         class="flex flex-col md:flex-row md:items-center justify-between mb-6 gap-2 border-b border-hack-border/50 pb-4">
                         <div class="flex items-center gap-2 text-xs font-mono text-gray-500 overflow-x-auto whitespace-nowrap pb-2 md:pb-0"
@@ -661,9 +729,8 @@
 
                             <button id="theme-toggle-desktop"
                                 class="text-gray-500 hover:text-hack-green transition-colors hidden md:block bg-hack-sidebar border border-hack-border rounded p-1.5"
-                                title="Toggle Theme">
-                                <i data-lucide="sun" class="w-4 h-4 hidden dark:block"></i>
-                                <i data-lucide="moon" class="w-4 h-4 block dark:hidden"></i>
+                                title="Switch Theme">
+                                <i data-lucide="palette" class="w-4 h-4"></i>
                             </button>
                         </div>
                     </div>
@@ -677,10 +744,16 @@
 
                 <aside class="hidden xl:block w-64 shrink-0">
                     <div class="sticky top-6">
-                        <h4
+                        <h4 id="label-on-this-page"
                             class="text-xs font-bold text-gray-500 uppercase tracking-widest mb-4 border-b border-hack-border pb-2">
                             On this page</h4>
-                        <ul id="toc-container" class="space-y-2 text-xs border-l border-hack-border pl-3"></ul>
+                        <div class="relative">
+                            <svg id="toc-svg">
+                                <path id="toc-path" fill="none" stroke="var(--accent-green)" stroke-width="2"
+                                    stroke-linecap="round" stroke-linejoin="round" />
+                            </svg>
+                            <ul id="toc-container" class="space-y-2 text-xs border-l border-hack-border pl-3"></ul>
+                        </div>
                     </div>
                 </aside>
             </div>
@@ -719,44 +792,202 @@
             contentCache: {},
             searchIndex: [],
             expandedSections: new Set(),
-            repo: "infinition/Bjorn", // YOUR REPO
-            branch: "wiki"
+            repo: CONFIG.repo,
+            branch: CONFIG.branch
         };
+
+        // --- 1.5 INITIALIZE CONFIG ---
+        function applyConfig() {
+            document.getElementById('site-title').innerText = `${CONFIG.projectName} // ${CONFIG.projectSubtitle}`;
+            document.getElementById('meta-description').setAttribute('content', CONFIG.description);
+
+            const mobileLogo = document.getElementById('mobile-logo');
+            mobileLogo.src = CONFIG.logoPath;
+            mobileLogo.onerror = () => mobileLogo.src = CONFIG.logoPlaceholder;
+
+            const sidebarLogo = document.getElementById('sidebar-logo');
+            sidebarLogo.src = CONFIG.logoPath;
+            sidebarLogo.onerror = () => sidebarLogo.src = CONFIG.logoPlaceholder;
+
+            document.getElementById('mobile-project-name').innerText = CONFIG.projectName;
+            document.getElementById('sidebar-project-name').innerText = CONFIG.projectName;
+
+            // UI Strings
+            document.getElementById('search-input').placeholder = CONFIG.ui.searchPlaceholder;
+            document.getElementById('label-changelog').innerText = CONFIG.ui.changelogTitle;
+            document.getElementById('label-initializing').innerText = CONFIG.ui.initializingText;
+            document.getElementById('label-join-us').innerText = CONFIG.ui.joinUsTitle;
+            document.getElementById('label-on-this-page').innerText = CONFIG.ui.onThisPageTitle;
+            document.getElementById('label-mobile-toc').innerText = CONFIG.ui.onThisPageMobile || CONFIG.ui.onThisPageTitle;
+            document.getElementById('search-results-msg').innerText = CONFIG.ui.noResultsText;
+            document.getElementById('label-menu').innerText = CONFIG.ui.menuText || "Menu";
+
+            const versionLoading = document.querySelector('.version-loading');
+            if (versionLoading) versionLoading.innerText = CONFIG.ui.checkingVersionText;
+
+            // Feature Toggles
+            const changelogBtn = document.getElementById('btn-versions');
+            if (changelogBtn) {
+                changelogBtn.style.display = CONFIG.features.showChangelog ? 'flex' : 'none';
+            }
+
+            const searchContainer = document.getElementById('search-input').parentElement;
+            if (searchContainer) {
+                searchContainer.style.display = CONFIG.features.showSearch ? 'block' : 'none';
+            }
+
+            const socialSection = document.getElementById('social-section');
+            if (socialSection) {
+                socialSection.style.display = CONFIG.features.showSocialBadges ? 'block' : 'none';
+            }
+
+            const themeToggles = [
+                document.getElementById('theme-toggle-mobile'),
+                document.getElementById('theme-toggle-desktop')
+            ];
+            themeToggles.forEach(btn => {
+                if (btn) btn.style.display = CONFIG.features.showThemeToggle ? 'block' : 'none';
+            });
+
+            renderCustomLinks();
+            renderFooter();
+            renderSocialLinks();
+        }
+
+        function renderCustomLinks() {
+            const render = (containerId, links) => {
+                const container = document.getElementById(containerId);
+                if (!container) return;
+                container.innerHTML = '';
+                if (!links || links.length === 0) return;
+
+                links.forEach(link => {
+                    container.innerHTML += `
+                        <a href="${link.url}" target="_blank" class="flex items-center gap-2 px-2 py-1.5 text-xs text-gray-400 hover:text-hack-green hover:bg-hack-bg rounded transition-colors group">
+                            <i data-lucide="${link.icon || 'link'}" class="w-3.5 h-3.5"></i>
+                            <span>${link.name}</span>
+                        </a>`;
+                });
+                lucide.createIcons();
+            };
+
+            render('custom-links-top', CONFIG.links.top);
+            render('custom-links-bottom', CONFIG.links.bottom);
+        }
+
+        function renderFooter() {
+            const footer = document.getElementById('sidebar-footer');
+            if (footer) {
+                footer.innerText = CONFIG.footerText || "";
+                footer.style.display = CONFIG.footerText ? 'block' : 'none';
+            }
+        }
+
+        // --- 1.6 TOAST SYSTEM ---
+        let toastTimeout;
+        function showToast(message) {
+            const toast = document.getElementById('toast-container');
+            const msgSpan = document.getElementById('toast-message');
+
+            clearTimeout(toastTimeout);
+            msgSpan.innerText = message;
+            toast.classList.add('active');
+
+            toastTimeout = setTimeout(() => {
+                toast.classList.remove('active');
+            }, 3000);
+        }
+
+        function renderSocialLinks() {
+            const container = document.getElementById('social-links');
+            container.innerHTML = '';
+
+            if (CONFIG.social.discord) {
+                const inviteCode = CONFIG.social.discord.split('/').pop();
+                container.innerHTML += `
+                    <a href="${CONFIG.social.discord}" target="_blank" class="hover:opacity-80 transition-opacity block">
+                        <img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fdiscord.com%2Fapi%2Finvites%2F${inviteCode}%3Fwith_counts%3Dtrue&query=%24.approximate_member_count&logo=discord&logoColor=white&style=for-the-badge&label=${CONFIG.badges.discordLabel}&color=5865F2&labelColor=2A2E35"
+                            alt="Discord" class="w-full badge-sm" />
+                    </a>`;
+            }
+
+            if (CONFIG.social.reddit) {
+                const subreddit = CONFIG.social.reddit.split('/r/').pop().replace(/\/$/, '');
+                container.innerHTML += `
+                    <a href="${CONFIG.social.reddit}" target="_blank" class="hover:opacity-80 transition-opacity block">
+                        <img src="https://img.shields.io/reddit/subreddit-subscribers/${subreddit}?style=for-the-badge&logo=reddit&label=${CONFIG.badges.redditLabel}&color=FF4500&labelColor=2A2E35&logoColor=white"
+                            alt="Reddit" class="w-full badge-sm" />
+                    </a>`;
+            }
+
+            if (CONFIG.social.github) {
+                const repoPath = CONFIG.social.github.replace('https://github.com/', '');
+                container.innerHTML += `
+                    <a href="${CONFIG.social.github}" target="_blank" class="hover:opacity-80 transition-opacity block">
+                        <img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fapi.github.com%2Frepos%2F${repoPath}&query=%24.stargazers_count&style=for-the-badge&logo=github&color=0B0C0E&labelColor=2A2E35&label=${CONFIG.badges.githubLabel}&logoColor=white"
+                            alt="GitHub" class="w-full badge-sm" />
+                    </a>`;
+            }
+
+            if (CONFIG.social.buyMeACoffee) {
+                container.innerHTML += `
+                    <a href="${CONFIG.social.buyMeACoffee}" target="_blank" class="hover:opacity-80 transition-opacity block pt-2 border-t border-hack-border/30 mt-1">
+                        <img src="https://img.shields.io/badge/Buy%20Me%20a%20Coffee-ffdd00?style=for-the-badge&logo=buy-me-a-coffee&logoColor=black"
+                            alt="Buy Me A Coffee" class="w-full badge-sm" />
+                    </a>`;
+            }
+        }
 
         // --- 2. THEME ENGINE ---
         function initTheme() {
-            const savedTheme = localStorage.getItem('theme') || 'dark';
-            const html = document.documentElement;
-            if (savedTheme === 'light') {
-                html.classList.remove('dark');
-                html.classList.add('light');
-            } else {
-                html.classList.add('dark');
-                html.classList.remove('light');
-            }
+            const savedThemeId = localStorage.getItem('theme-id') || CONFIG.defaultTheme;
+            applyTheme(savedThemeId);
         }
 
-        function toggleTheme() {
+        function applyTheme(themeId) {
+            const theme = CONFIG.themes.find(t => t.id === themeId) || CONFIG.themes[0];
             const html = document.documentElement;
-            const isDark = html.classList.contains('dark');
-            if (isDark) {
-                html.classList.remove('dark');
-                html.classList.add('light');
-                localStorage.setItem('theme', 'light');
-            } else {
-                html.classList.remove('light');
+            const themeLink = document.getElementById('theme-link');
+
+            themeLink.href = theme.file;
+
+            if (theme.isDark) {
                 html.classList.add('dark');
-                localStorage.setItem('theme', 'dark');
+                html.classList.remove('light');
+            } else {
+                html.classList.add('light');
+                html.classList.remove('dark');
             }
+
+            localStorage.setItem('theme-id', theme.id);
             lucide.createIcons();
+
+            // Notify user (except on initial load)
+            if (STATE && STATE.wikiData && Object.keys(STATE.wikiData).length > 0) {
+                showToast(`${CONFIG.ui.themeChangedText}${theme.name}`);
+            }
         }
 
-        document.getElementById('theme-toggle-desktop').onclick = toggleTheme;
-        document.getElementById('theme-toggle-mobile').onclick = toggleTheme;
+        function cycleTheme() {
+            const currentThemeId = localStorage.getItem('theme-id') || CONFIG.defaultTheme;
+            const currentIndex = CONFIG.themes.findIndex(t => t.id === currentThemeId);
+            const nextIndex = (currentIndex + 1) % CONFIG.themes.length;
+            const nextTheme = CONFIG.themes[nextIndex];
+
+            applyTheme(nextTheme.id);
+        }
+
+        document.getElementById('theme-toggle-desktop').onclick = cycleTheme;
+        document.getElementById('theme-toggle-mobile').onclick = cycleTheme;
         initTheme();
 
         // --- 3. FETCH DATA (GitHub API) ---
         async function fetchLatestVersion() {
+            if (CONFIG.versioning.type === 'local') {
+                updateVersionUI(CONFIG.versioning.manualVersion, true);
+                return;
+            }
+
             const CACHE_KEY = 'bjorn_ver_data';
             const now = Date.now();
             const ONE_HOUR = 3600 * 1000;
@@ -912,6 +1143,14 @@
 
         // --- 5. CONTENT LOADER (PERSISTENT CACHE OPTIMIZED) ---
         async function loadContent(folder, title, filename, pushHistory = true) {
+            if (CONFIG.features.pageTransitions && document.startViewTransition) {
+                document.startViewTransition(() => performLoadContent(folder, title, filename, pushHistory));
+            } else {
+                performLoadContent(folder, title, filename, pushHistory);
+            }
+        }
+
+        async function performLoadContent(folder, title, filename, pushHistory = true) {
             const viewer = document.getElementById('markdown-viewer');
             const pageNav = document.getElementById('page-nav');
             const scrollContainer = document.getElementById('scroll-container');
@@ -989,7 +1228,7 @@
                 viewer.innerHTML = cleanHTML;
 
                 const wordCount = text.replace(/[#*`]/g, '').split(/\s+/).length;
-                document.getElementById('reading-time').textContent = `~${Math.ceil(wordCount / 200)} min read`;
+                document.getElementById('reading-time').textContent = `${CONFIG.ui.readingTimePrefix}${Math.ceil(wordCount / 200)} ${CONFIG.ui.readingTimeSuffix}`;
                 fetchLastUpdated(folder, filename);
 
                 enhanceMarkdownContent();
@@ -1001,7 +1240,11 @@
                     window.history.pushState({ folder, title, filename }, "", newUrl);
                 }
 
-                STATE.expandedSections = new Set([folder]);
+                if (CONFIG.features.autoCollapseSidebar) {
+                    STATE.expandedSections = new Set([folder]);
+                } else {
+                    STATE.expandedSections.add(folder);
+                }
                 renderSidebar();
                 if (window.location.hash) {
                     const el = document.getElementById(window.location.hash.substring(1));
@@ -1028,6 +1271,11 @@
         }
 
         async function fetchLastUpdated(folder, filename) {
+            if (CONFIG.versioning.type === 'local') {
+                document.getElementById('last-updated').textContent = `${CONFIG.ui.lastUpdatedText}: ${CONFIG.versioning.manualDate}`;
+                return;
+            }
+
             const CACHE_KEY = `bjorn_upd_${folder}_${filename}`;
             const now = Date.now();
 
@@ -1035,7 +1283,7 @@
             if (cached) {
                 const data = JSON.parse(cached);
                 if (now - data.ts < 86400000) {
-                    document.getElementById('last-updated').textContent = `Updated: ${data.date}`;
+                    document.getElementById('last-updated').textContent = `${CONFIG.ui.lastUpdatedText}: ${data.date}`;
                     return;
                 }
             }
@@ -1047,7 +1295,7 @@
                     const data = await res.json();
                     if (data.length > 0) {
                         const date = new Date(data[0].commit.committer.date).toLocaleDateString();
-                        document.getElementById('last-updated').textContent = `Updated: ${date}`;
+                        document.getElementById('last-updated').textContent = `${CONFIG.ui.lastUpdatedText}: ${date}`;
                         localStorage.setItem(CACHE_KEY, JSON.stringify({ ts: now, date }));
                     }
                 }
@@ -1080,7 +1328,7 @@
         }
 
         function enhanceMarkdownContent() {
-            document.querySelectorAll('#markdown-viewer h2, #markdown-viewer h3').forEach(h => {
+            document.querySelectorAll('#markdown-viewer h1, #markdown-viewer h2, #markdown-viewer h3').forEach(h => {
                 if (!h.id) h.id = h.textContent.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
 
                 const anchor = document.createElement('a');
@@ -1187,18 +1435,23 @@
         function generateTOC() {
             const desktopToc = document.getElementById('toc-container');
             const mobileToc = document.getElementById('mobile-toc-list');
-            const headings = document.querySelectorAll('#markdown-viewer h2, #markdown-viewer h3');
+            const headings = document.querySelectorAll('#markdown-viewer h1, #markdown-viewer h2, #markdown-viewer h3');
 
             const createTOCItem = (h, isMobile) => {
                 const li = document.createElement('li');
                 const link = document.createElement('a');
                 link.textContent = h.childNodes[0].textContent;
                 link.href = `#${h.id}`;
-                // Different styling for desktop vs mobile
+
+                // Indentation based on tag
+                let indentClass = '';
+                if (h.tagName === 'H2') indentClass = 'ml-3';
+                if (h.tagName === 'H3') indentClass = 'ml-6';
+
                 if (isMobile) {
-                    link.className = `block py-2 text-gray-400 hover:text-hack-green border-l-2 border-transparent pl-3 transition-colors ${h.tagName === 'H3' ? 'ml-4 text-xs' : 'font-medium'}`;
+                    link.className = `block py-2 text-gray-400 hover:text-hack-green border-l-2 border-transparent pl-3 transition-colors ${indentClass} ${h.tagName !== 'H1' ? 'text-xs' : 'font-medium'}`;
                 } else {
-                    link.className = `toc-link block py-1 pl-2 border-l-2 border-transparent hover:text-hack-green transition-colors truncate ${h.tagName === 'H3' ? 'ml-3 opacity-80' : ''}`;
+                    link.className = `toc-link block py-1 pl-2 border-l-2 border-transparent hover:text-hack-green transition-colors truncate ${indentClass} ${h.tagName !== 'H1' ? 'opacity-80' : ''}`;
                 }
 
                 link.onclick = (e) => {
@@ -1216,8 +1469,8 @@
             mobileToc.innerHTML = '';
 
             if (headings.length === 0) {
-                desktopToc.innerHTML = '<li class="text-gray-600 italic">No sections</li>';
-                mobileToc.innerHTML = '<li class="text-gray-600 italic text-center py-4">No sections available for this page.</li>';
+                desktopToc.innerHTML = `<li class="text-gray-600 italic">${CONFIG.ui.noSectionsText}</li>`;
+                mobileToc.innerHTML = `<li class="text-gray-600 italic text-center py-4">${CONFIG.ui.noSectionsText}</li>`;
                 return;
             }
 
@@ -1225,6 +1478,86 @@
                 desktopToc.appendChild(createTOCItem(h, false));
                 mobileToc.appendChild(createTOCItem(h, true));
             });
+
+            // Initial active state update
+            setTimeout(updateTOCActiveState, 100);
+        }
+
+        function updateTOCActiveState() {
+            const scrollContainer = document.getElementById('scroll-container');
+            const headings = Array.from(document.querySelectorAll('#markdown-viewer h1, #markdown-viewer h2, #markdown-viewer h3'));
+            const tocLinks = Array.from(document.querySelectorAll('.toc-link'));
+            const path = document.getElementById('toc-path');
+
+            if (!headings.length || !tocLinks.length || !path) return;
+
+            const containerRect = scrollContainer.getBoundingClientRect();
+            const buffer = 10; // Very small buffer for precision
+
+            // Find headings that are visible in the viewport
+            let activeHeadings = headings.filter(h => {
+                const rect = h.getBoundingClientRect();
+                const relativeTop = rect.top - containerRect.top;
+                const relativeBottom = rect.bottom - containerRect.top;
+                return (relativeTop < containerRect.height - buffer) && (relativeBottom > buffer);
+            });
+
+            // Fallback: if no heading is in view, use the last one that passed the top
+            if (activeHeadings.length === 0) {
+                const scrollPos = scrollContainer.scrollTop;
+                for (let i = headings.length - 1; i >= 0; i--) {
+                    if (headings[i].offsetTop <= scrollPos + 100) {
+                        activeHeadings.push(headings[i]);
+                        break;
+                    }
+                }
+            }
+            if (activeHeadings.length === 0) activeHeadings.push(headings[0]);
+
+            const activeIds = new Set(activeHeadings.map(h => h.id));
+            const activeLinks = [];
+
+            tocLinks.forEach(link => {
+                const id = link.getAttribute('href').substring(1);
+                if (activeIds.has(id)) {
+                    link.classList.add('active');
+                    activeLinks.push(link);
+                } else {
+                    link.classList.remove('active');
+                }
+            });
+
+            if (activeLinks.length > 0) {
+                let d = "";
+                let lastIndex = -2;
+
+                activeLinks.forEach((link, index) => {
+                    const id = link.getAttribute('href').substring(1);
+                    const heading = document.getElementById(id);
+                    const linkIndex = tocLinks.indexOf(link);
+
+                    // X position based on indentation (relative to TOC container left border)
+                    let x = -1; // Default for H1 (aligned with the left border)
+                    if (heading.tagName === 'H2') x = 11;   // H2 indented with ml-3 (12px)
+                    else if (heading.tagName === 'H3') x = 23; // H3 indented with ml-6 (24px)
+
+                    const yTop = link.offsetTop;
+                    const yBottom = yTop + link.offsetHeight;
+
+                    // If not contiguous with previous active link, start a new path segment
+                    if (linkIndex !== lastIndex + 1) {
+                        d += ` M ${x} ${yTop} L ${x} ${yBottom}`;
+                    } else {
+                        d += ` L ${x} ${yTop} L ${x} ${yBottom}`;
+                    }
+                    lastIndex = linkIndex;
+                });
+
+                path.setAttribute('d', d);
+                path.classList.add('active');
+            } else {
+                path.classList.remove('active');
+            }
         }
 
         // --- 6. SIDEBAR ---
@@ -1331,13 +1664,21 @@
 
         // --- 8. CHANGELOG ---
         async function toggleVersionsPage(btn, pushHistory = true) {
+            if (CONFIG.features.pageTransitions && document.startViewTransition) {
+                document.startViewTransition(() => performToggleVersionsPage(btn, pushHistory));
+            } else {
+                performToggleVersionsPage(btn, pushHistory);
+            }
+        }
+
+        async function performToggleVersionsPage(btn, pushHistory = true) {
             const viewer = document.getElementById('markdown-viewer');
-            document.getElementById('breadcrumbs').innerHTML = `<span class="hover:text-hack-heading cursor-pointer" onclick="loadDefault()">Bjorn</span> <span>/</span> <span class="text-hack-green font-bold">Changelog</span>`;
+            document.getElementById('breadcrumbs').innerHTML = `<span class="hover:text-hack-heading cursor-pointer" onclick="loadDefault()">${CONFIG.projectName}</span> <span>/</span> <span class="text-hack-green font-bold">${CONFIG.ui.changelogTitle}</span>`;
             document.getElementById('page-nav').innerHTML = '';
             document.getElementById('reading-time').innerHTML = '';
             document.getElementById('last-updated').innerHTML = '';
 
-            viewer.innerHTML = `<h1>Changelog</h1><div id="versions-list" class="space-y-4 mt-6"><div class="animate-pulse text-hack-green">Fetching GitHub releases...</div></div>`;
+            viewer.innerHTML = `<h1>${CONFIG.ui.changelogTitle}</h1><div id="versions-list" class="space-y-4 mt-6"><div class="animate-pulse text-hack-green">${CONFIG.ui.fetchingReleasesText}</div></div>`;
             if (pushHistory) window.history.pushState({ page: 'versions' }, "", "?page=changelog");
 
             try {
@@ -1462,6 +1803,8 @@
 
                     if (scrollTop > 300) scrollBtn.classList.remove('hidden');
                     else scrollBtn.classList.add('hidden');
+
+                    updateTOCActiveState();
                 });
             }
             if (scrollBtn) {
@@ -1553,6 +1896,7 @@
 
         // INIT
         window.onload = () => {
+            applyConfig();
             initUI();
             fetchLatestVersion();
             initWiki();
