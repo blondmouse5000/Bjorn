@@ -12,7 +12,7 @@ const CONFIG = {
     // type: "github" (automatic from API) or "local" (manual)
     versioning: {
         type: "github",
-        manualVersion: "v1.0.0",
+        manualVersion: "v1.0.11",
         manualDate: "2026-01-21"
     },
 
@@ -50,7 +50,8 @@ const CONFIG = {
         showSocialBadges: true,
         showThemeToggle: true,
         pageTransitions: true,
-        autoCollapseSidebar: false
+        autoCollapseSidebar: false,
+        stickyBreadcrumbs: true
     },
 
     // Custom Navigation Links

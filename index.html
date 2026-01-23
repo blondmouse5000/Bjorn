@@ -3,7 +3,8 @@
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title id="site-title">BJORN // WIKI NODE</title>
     <meta name="description" id="meta-description" content="Official Documentation and Wiki for BJORN Cyber Viking">
 
@@ -401,14 +402,15 @@
         }
 
         .badge-sm {
-            transform: scale(.75);
-            transform-origin: top left;
-            margin-bottom: calc(-6px * .75);
+            width: 100%;
+            display: block;
+            border-radius: 6px;
+            overflow: hidden;
         }
 
         .badge-sm:hover {
-            transform: scale(.80);
-            transition: transform .15s ease;
+            filter: brightness(1.1);
+            transition: filter .15s ease;
         }
 
         ::-webkit-scrollbar-thumb {
@@ -548,6 +550,80 @@
                 opacity: 1;
             }
         }
+
+        /* --- STICKY BREADCRUMBS BUBBLE --- */
+        .breadcrumb-sticky-container {
+            position: relative;
+            top: 0.75rem;
+            z-index: 45;
+            margin-bottom: 2rem;
+            width: 100%;
+            transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .breadcrumb-sticky-container.is-sticky {
+            position: sticky;
+        }
+
+        .breadcrumb-sticky-container::before {
+            content: '';
+            position: absolute;
+            /* Default state: slightly smaller and invisible */
+            inset: 0;
+            background-color: var(--bg-sidebar);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.5);
+            opacity: 0;
+            transform: scale(0.98);
+            transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+            pointer-events: none;
+            z-index: -1;
+        }
+
+        .breadcrumb-sticky-container.stuck::before {
+            opacity: 1;
+            transform: scale(1);
+            /* Grow outward to create padding effect without shifting text */
+            inset: -0.6rem -1rem;
+        }
+
+        .breadcrumb-sticky-container.stuck {
+            transform: translateY(0.25rem);
+        }
+
+        .breadcrumb-sticky-container.stuck .breadcrumb-inner {
+            margin-bottom: 0;
+        }
+
+        /* --- MOBILE SAFE AREAS (iOS Notch/Home Indicator) --- */
+        header {
+            padding-top: env(safe-area-inset-top);
+            height: calc(4rem + env(safe-area-inset-top));
+        }
+
+        #sidebar {
+            padding-top: env(safe-area-inset-top);
+            padding-bottom: env(safe-area-inset-bottom);
+        }
+
+        #mobile-toc-sidebar {
+            padding-top: env(safe-area-inset-top);
+            padding-bottom: env(safe-area-inset-bottom);
+        }
+
+        #toast-container {
+            margin-bottom: env(safe-area-inset-bottom);
+        }
+
+        /* Adjust scroll container for safe areas if needed */
+        @media (max-width: 768px) {
+            #scroll-container {
+                padding-bottom: env(safe-area-inset-bottom);
+            }
+        }
     </style>
 
     <script>
@@ -594,7 +670,7 @@
     <!-- Mobile Header -->
     <header
         class="md:hidden flex-none bg-hack-sidebar border-b border-hack-border h-16 flex items-center justify-between px-4 z-[60] relative shadow-lg">
-        <div class="flex items-center gap-3">
+        <div class="flex items-center gap-3 cursor-pointer" onclick="loadDefault()">
             <div class="w-10 h-10">
                 <img id="mobile-logo" src="assets/bjorn.png"
                     onerror="this.src='https://placehold.co/40x40/111214/22c55e?text=B'" alt="Logo"
@@ -635,7 +711,7 @@
             </button>
 
             <div class="flex items-center justify-between mb-4">
-                <div class="flex items-center gap-3">
+                <div class="flex items-center gap-3 cursor-pointer" onclick="loadDefault()">
                     <div class="w-12 h-12 shrink-0">
                         <img id="sidebar-logo" src="assets/bjorn.png"
                             onerror="this.src='https://placehold.co/48x48/111214/22c55e?text=B'" alt="Logo"
@@ -690,24 +766,24 @@
             </nav>
 
             <div id="custom-links-bottom" class="px-3 pb-4 space-y-1"></div>
+        </div>
 
-            <div id="social-section" class="p-4 border-t border-hack-border bg-hack-bg/30 flex-none">
-                <div id="search-results-msg" class="hidden px-4 py-2 text-xs text-red-400 text-center italic">
-                    No results found.
-                </div>
-                <div class="text-center">
-                    <strong id="label-join-us" class="text-gray-500 text-sm block mb-3 font-mono tracking-wide">:: JOIN
-                        US ::</strong>
-                    <div id="social-links" class="flex flex-col">
-                        <!-- Social links will be injected by JS -->
-                    </div>
+        <div id="social-section" class="p-4 border-t border-hack-border bg-hack-bg/30 flex-none">
+            <div id="search-results-msg" class="hidden px-4 py-2 text-xs text-red-400 text-center italic">
+                No results found.
+            </div>
+            <div class="text-center">
+                <strong id="label-join-us" class="text-gray-500 text-sm block mb-3 font-mono tracking-wide">:: JOIN
+                    US ::</strong>
+                <div id="social-links" class="flex flex-col gap-2">
+                    <!-- Social links will be injected by JS -->
                 </div>
             </div>
+        </div>
 
-            <div id="sidebar-footer"
-                class="p-4 border-t border-hack-border bg-hack-bg/50 text-[10px] text-gray-500 font-mono text-center">
-                <!-- Footer text will be injected by JS -->
-            </div>
+        <div id="sidebar-footer"
+            class="p-4 border-t border-hack-border bg-hack-bg/50 text-[10px] text-gray-500 font-mono text-center">
+            <!-- Footer text will be injected by JS -->
         </div>
 
     </aside>
@@ -732,23 +808,25 @@
         <main class="flex-1 overflow-y-auto bg-hack-bg scroll-smooth relative w-full" id="scroll-container">
             <div class="max-w-6xl mx-auto px-5 py-8 md:py-12 md:px-10 flex gap-10">
                 <div class="flex-1 min-w-0 content-transition-area">
-                    <div
-                        class="flex flex-col md:flex-row md:items-center justify-between mb-6 gap-2 border-b border-hack-border/50 pb-4">
-                        <div class="flex items-center gap-2 text-xs font-mono text-gray-500 overflow-x-auto whitespace-nowrap md:pb-0"
-                            id="breadcrumbs"></div>
+                    <div id="breadcrumb-sticky-container" class="breadcrumb-sticky-container">
+                        <div
+                            class="breadcrumb-inner flex flex-col md:flex-row md:items-center justify-between mb-4 gap-2 transition-all duration-300">
+                            <div class="flex items-center gap-2 text-xs font-mono text-gray-500 overflow-x-auto whitespace-nowrap md:pb-0"
+                                id="breadcrumbs"></div>
 
-                        <div class="flex items-center gap-4">
-                            <div
-                                class="flex items-center gap-4 text-[10px] font-mono text-gray-500 uppercase tracking-wider shrink-0">
-                                <span id="reading-time" class="hidden md:block"></span>
-                                <span id="last-updated" class="hidden md:block text-hack-green opacity-80"></span>
+                            <div class="flex items-center gap-4">
+                                <div
+                                    class="flex items-center gap-4 text-[10px] font-mono text-gray-500 uppercase tracking-wider shrink-0">
+                                    <span id="reading-time" class="hidden md:block"></span>
+                                    <span id="last-updated" class="hidden md:block text-hack-green opacity-80"></span>
+                                </div>
+
+                                <button id="theme-toggle-desktop"
+                                    class="text-gray-500 hover:text-hack-green transition-colors hidden md:block bg-hack-sidebar border border-hack-border rounded p-1.5"
+                                    title="Switch Theme">
+                                    <i data-lucide="palette" class="w-4 h-4"></i>
+                                </button>
                             </div>
-
-                            <button id="theme-toggle-desktop"
-                                class="text-gray-500 hover:text-hack-green transition-colors hidden md:block bg-hack-sidebar border border-hack-border rounded p-1.5"
-                                title="Switch Theme">
-                                <i data-lucide="palette" class="w-4 h-4"></i>
-                            </button>
                         </div>
                     </div>
 
@@ -869,8 +947,17 @@
                 document.getElementById('theme-toggle-desktop')
             ];
             themeToggles.forEach(btn => {
-                if (btn) btn.style.display = CONFIG.features.showThemeToggle ? 'block' : 'none';
+                if (btn) btn.style.display = CONFIG.features.showThemeToggle ? '' : 'none';
             });
+
+            const breadcrumbContainer = document.getElementById('breadcrumb-sticky-container');
+            if (breadcrumbContainer) {
+                if (CONFIG.features.stickyBreadcrumbs) {
+                    breadcrumbContainer.classList.add('is-sticky');
+                } else {
+                    breadcrumbContainer.classList.remove('is-sticky');
+                }
+            }
 
             renderCustomLinks();
             renderFooter();
@@ -954,7 +1041,7 @@
 
             if (CONFIG.social.buyMeACoffee) {
                 container.innerHTML += `
-                    <a href="${CONFIG.social.buyMeACoffee}" target="_blank" class="hover:opacity-80 transition-opacity block pt-2 border-t border-hack-border/30 mt-1">
+                    <a href="${CONFIG.social.buyMeACoffee}" target="_blank" class="hover:opacity-80 transition-opacity block pt-4 border-t border-hack-border mt-4">
                         <img src="https://img.shields.io/badge/Buy%20Me%20a%20Coffee-ffdd00?style=for-the-badge&logo=buy-me-a-coffee&logoColor=black"
                             alt="Buy Me A Coffee" class="w-full badge-sm" />
                     </a>`;
@@ -1221,38 +1308,23 @@
             let breadcrumbParts = [];
             breadcrumbParts.push(`<span class="hover:text-hack-heading cursor-pointer" onclick="loadDefault()">wiki</span>`);
 
-            if (segments.length > 2) {
-                breadcrumbParts.push(`<span class="opacity-50 cursor-help" title="${segments.slice(0, -1).join(' / ')}">...</span>`);
+            let currentPath = "";
+            const folderParts = folder.split('/').filter(s => s);
 
-                // For the last folder segment, find its first page
-                const lastFolderKey = folder.split('/').pop();
-                const folderData = folder.split('/').reduce((obj, key) => obj[key], STATE.wikiData);
+            segments.forEach((seg, i) => {
+                const partKey = folderParts[i];
+                currentPath = currentPath ? `${currentPath}/${partKey}` : partKey;
+
+                // Find first page in this specific folder level to make the folder clickable
+                const folderData = currentPath.split('/').reduce((obj, key) => obj[key], STATE.wikiData);
                 const firstPage = Object.entries(folderData).find(([k, v]) => typeof v === 'string');
 
                 if (firstPage) {
-                    breadcrumbParts.push(`<span class="hover:text-hack-heading cursor-pointer" onclick="loadContent('${folder}', '${firstPage[0]}', '${firstPage[1]}')">${segments[segments.length - 1]}</span>`);
+                    breadcrumbParts.push(`<span class="hover:text-hack-heading cursor-pointer" onclick="loadContent('${currentPath}', '${firstPage[0]}', '${firstPage[1]}')">${seg}</span>`);
                 } else {
-                    breadcrumbParts.push(`<span>${segments[segments.length - 1]}</span>`);
+                    breadcrumbParts.push(`<span>${seg}</span>`);
                 }
-            } else {
-                let currentPath = "";
-                const folderParts = folder.split('/').filter(s => s);
-
-                segments.forEach((seg, i) => {
-                    const partKey = folderParts[i];
-                    currentPath = currentPath ? `${currentPath}/${partKey}` : partKey;
-
-                    // Find first page in this specific folder level
-                    const folderData = currentPath.split('/').reduce((obj, key) => obj[key], STATE.wikiData);
-                    const firstPage = Object.entries(folderData).find(([k, v]) => typeof v === 'string');
-
-                    if (firstPage) {
-                        breadcrumbParts.push(`<span class="hover:text-hack-heading cursor-pointer" onclick="loadContent('${currentPath}', '${firstPage[0]}', '${firstPage[1]}')">${seg}</span>`);
-                    } else {
-                        breadcrumbParts.push(`<span>${seg}</span>`);
-                    }
-                });
-            }
+            });
             breadcrumbParts.push(`<span class="text-hack-green font-bold">${title}</span>`);
 
             breadcrumbs.innerHTML = `
@@ -1937,6 +2009,7 @@
             const scrollBtn = document.getElementById('scroll-top-btn');
 
             if (scrollContainer && progressBar) {
+                const breadcrumbContainer = document.getElementById('breadcrumb-sticky-container');
                 scrollContainer.addEventListener('scroll', () => {
                     const scrollTop = scrollContainer.scrollTop;
                     const scrollHeight = scrollContainer.scrollHeight - scrollContainer.clientHeight;
@@ -1945,6 +2018,17 @@
 
                     if (scrollTop > 300) scrollBtn.classList.remove('hidden');
                     else scrollBtn.classList.add('hidden');
+
+                    if (breadcrumbContainer && CONFIG.features.stickyBreadcrumbs) {
+                        // Use a small threshold and requestAnimationFrame for smoothness
+                        if (scrollTop > 20) {
+                            breadcrumbContainer.classList.add('stuck');
+                        } else {
+                            breadcrumbContainer.classList.remove('stuck');
+                        }
+                    } else if (breadcrumbContainer) {
+                        breadcrumbContainer.classList.remove('stuck');
+                    }
 
                     updateTOCActiveState();
                 });
