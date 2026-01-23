@@ -324,8 +324,11 @@
         .nav-link.active {
             background-color: var(--accent-dim);
             color: var(--accent-green);
-            border-left: 2px solid var(--accent-green);
             padding-left: 0.5rem !important;
+        }
+
+        .nav-link.active span {
+            background-color: var(--accent-green) !important;
         }
 
         /* TOC & Scroll */
@@ -462,6 +465,19 @@
                 padding-bottom: 10px;
                 margin-bottom: 20px;
             }
+        }
+
+        /* Hide scrollbar for breadcrumbs */
+        #breadcrumbs {
+            -ms-overflow-style: none;
+            /* IE and Edge */
+            scrollbar-width: none;
+            /* Firefox */
+        }
+
+        #breadcrumbs::-webkit-scrollbar {
+            display: none;
+            /* Chrome, Safari and Opera */
         }
 
         /* Toast Notification */
@@ -700,8 +716,9 @@
     <aside id="mobile-toc-sidebar"
         class="sidebar-mobile fixed top-0 bottom-0 right-0 z-[70] w-[280px] bg-hack-sidebar border-l border-hack-border transform translate-x-full md:hidden flex flex-col shadow-2xl transition-transform duration-300">
         <div class="p-4 border-b border-hack-border flex justify-between items-center bg-hack-bg/50">
-            <span id="label-mobile-toc"
-                class="text-xs font-bold text-gray-500 uppercase tracking-widest font-mono">Table of Contents</span>
+            <div id="label-mobile-toc"
+                class="text-[10px] font-bold text-hack-green uppercase tracking-widest px-3 py-1 bg-hack-greenDim border border-hack-border rounded-full font-mono truncate max-w-[200px]">
+            </div>
             <button id="close-toc-btn" class="text-gray-400 hover:text-white">
                 <i data-lucide="x" class="w-5 h-5"></i>
             </button>
@@ -717,7 +734,7 @@
                 <div class="flex-1 min-w-0 content-transition-area">
                     <div
                         class="flex flex-col md:flex-row md:items-center justify-between mb-6 gap-2 border-b border-hack-border/50 pb-4">
-                        <div class="flex items-center gap-2 text-xs font-mono text-gray-500 overflow-x-auto whitespace-nowrap pb-2 md:pb-0"
+                        <div class="flex items-center gap-2 text-xs font-mono text-gray-500 overflow-x-auto whitespace-nowrap md:pb-0"
                             id="breadcrumbs"></div>
 
                         <div class="flex items-center gap-4">
@@ -744,15 +761,18 @@
 
                 <aside class="hidden xl:block w-64 shrink-0">
                     <div class="sticky top-6">
-                        <h4 id="label-on-this-page"
-                            class="text-xs font-bold text-gray-500 uppercase tracking-widest mb-4 border-b border-hack-border pb-2">
-                            On this page</h4>
+                        <div class="mb-6">
+                            <button id="label-on-this-page"
+                                class="text-[10px] font-bold text-hack-green uppercase tracking-widest px-3 py-1.5 bg-hack-greenDim border border-hack-border rounded-full transition-all hover:bg-hack-green hover:text-white text-left max-w-full truncate"
+                                onclick="document.getElementById('scroll-container').scrollTo({top: 0, behavior: 'smooth'})">
+                            </button>
+                        </div>
                         <div class="relative">
                             <svg id="toc-svg">
                                 <path id="toc-path" fill="none" stroke="var(--accent-green)" stroke-width="2"
                                     stroke-linecap="round" stroke-linejoin="round" />
                             </svg>
-                            <ul id="toc-container" class="space-y-2 text-xs border-l border-hack-border pl-3"></ul>
+                            <ul id="toc-container" class="space-y-2 text-xs pl-3"></ul>
                         </div>
                     </div>
                 </aside>
@@ -793,7 +813,10 @@
             searchIndex: [],
             expandedSections: new Set(),
             repo: CONFIG.repo,
-            branch: CONFIG.branch
+            branch: CONFIG.branch,
+            currentTitle: "",
+            currentFolder: "",
+            currentFilename: ""
         };
 
         // --- 1.5 INITIALIZE CONFIG ---
@@ -1074,20 +1097,24 @@
             if (pageParam === 'changelog') {
                 toggleVersionsPage(null, false);
             } else if (pageParam) {
-                let found = false;
-                for (const [folder, files] of Object.entries(STATE.wikiData)) {
-                    for (const [title, file] of Object.entries(files)) {
-                        if (`${folder}/${file}` === pageParam || file === pageParam) {
-                            loadContent(folder, title, file, false);
-                            STATE.expandedSections.add(folder);
-                            renderSidebar();
-                            found = true;
-                            break;
+                const flatList = getFlatPageList();
+                const found = flatList.find(item => `${item.folder}/${item.file}` === pageParam || item.file === pageParam);
+
+                if (found) {
+                    loadContent(found.folder, found.title, found.file, false);
+                    // Expand all parent folders
+                    const parts = found.folder.split('/');
+                    let current = "";
+                    parts.forEach(p => {
+                        if (p) {
+                            current = current ? `${current}/${p}` : p;
+                            STATE.expandedSections.add(current);
                         }
-                    }
-                    if (found) break;
+                    });
+                    renderSidebar();
+                } else {
+                    loadDefault();
                 }
-                if (!found) loadDefault();
             } else {
                 loadDefault();
             }
@@ -1095,37 +1122,59 @@
 
         async function buildSearchIndex() {
             const promises = [];
-            for (const [folder, files] of Object.entries(STATE.wikiData)) {
-                for (const [title, filename] of Object.entries(files)) {
-                    if (!filename.endsWith('.md')) continue;
 
-                    promises.push(
-                        fetch(`./wiki/${folder}/${filename}`)
-                            .then(res => { if (!res.ok) return ''; return res.text(); })
-                            .then(text => {
-                                if (!text) return;
-                                STATE.searchIndex.push({
-                                    folder, title, filename,
-                                    content: text.toLowerCase(),
-                                    titleLower: title.toLowerCase()
-                                });
-                            })
-                            .catch(err => console.log("Indexing skip:", filename))
-                    );
+            function indexRecursive(data, currentPath = '') {
+                for (const [key, value] of Object.entries(data)) {
+                    if (typeof value === 'object' && value !== null) {
+                        const folderPath = currentPath ? `${currentPath}/${key}` : key;
+                        indexRecursive(value, folderPath);
+                    } else if (typeof value === 'string' && value.endsWith('.md')) {
+                        const filename = value;
+                        const title = key;
+                        const folder = currentPath;
+
+                        promises.push(
+                            fetch(`./wiki/${folder}/${filename}`)
+                                .then(res => { if (!res.ok) return ''; return res.text(); })
+                                .then(text => {
+                                    if (!text) return;
+                                    STATE.searchIndex.push({
+                                        folder, title, filename,
+                                        content: text.toLowerCase(),
+                                        titleLower: title.toLowerCase()
+                                    });
+                                })
+                                .catch(err => console.log("Indexing skip:", filename))
+                        );
+                    }
                 }
             }
+
+            indexRecursive(STATE.wikiData);
             await Promise.all(promises);
         }
 
-        function loadDefault() {
-            const folders = Object.keys(STATE.wikiData);
-            if (folders.length === 0) return;
-            const firstFolder = folders[0];
-            const files = Object.keys(STATE.wikiData[firstFolder]);
-            if (files.length === 0) return;
+        function getFlatPageList() {
+            const flatList = [];
+            function traverse(data, currentPath = '') {
+                for (const [key, value] of Object.entries(data)) {
+                    if (typeof value === 'object' && value !== null) {
+                        const folderPath = currentPath ? `${currentPath}/${key}` : key;
+                        traverse(value, folderPath);
+                    } else if (typeof value === 'string' && value.endsWith('.md')) {
+                        flatList.push({ folder: currentPath, title: key, file: value });
+                    }
+                }
+            }
+            traverse(STATE.wikiData);
+            return flatList;
+        }
 
-            const firstTitle = files[0];
-            loadContent(firstFolder, firstTitle, STATE.wikiData[firstFolder][firstTitle], true);
+        function loadDefault() {
+            const flatList = getFlatPageList();
+            if (flatList.length === 0) return;
+            const first = flatList[0];
+            loadContent(first.folder, first.title, first.file, true);
         }
 
         function showErrorState(msg) {
@@ -1155,11 +1204,63 @@
             const pageNav = document.getElementById('page-nav');
             const scrollContainer = document.getElementById('scroll-container');
 
-            const cleanFolder = folder.replace(/^\d+_/, '').replace(/_/g, ' ');
-            document.getElementById('breadcrumbs').innerHTML = `
-                <span class="hover:text-hack-heading cursor-pointer" onclick="loadDefault()">wiki</span> <span>/</span> 
-                <span>${cleanFolder}</span> <span>/</span> <span class="text-hack-green font-bold">${title}</span>
+            STATE.currentTitle = title;
+            STATE.currentFolder = folder;
+            STATE.currentFilename = filename;
+            document.getElementById('label-on-this-page').innerText = title;
+            document.getElementById('label-mobile-toc').innerText = title;
+
+            const flatList = getFlatPageList();
+            const idx = flatList.findIndex(item => item.folder === folder && item.title === title);
+            const prev = idx > 0 ? flatList[idx - 1] : null;
+            const next = idx < flatList.length - 1 ? flatList[idx + 1] : null;
+
+            const segments = folder.split('/').filter(s => s).map(s => s.replace(/^\d+_/, '').replace(/_/g, ' '));
+            const breadcrumbs = document.getElementById('breadcrumbs');
+
+            let breadcrumbParts = [];
+            breadcrumbParts.push(`<span class="hover:text-hack-heading cursor-pointer" onclick="loadDefault()">wiki</span>`);
+
+            if (segments.length > 2) {
+                breadcrumbParts.push(`<span class="opacity-50 cursor-help" title="${segments.slice(0, -1).join(' / ')}">...</span>`);
+
+                // For the last folder segment, find its first page
+                const lastFolderKey = folder.split('/').pop();
+                const folderData = folder.split('/').reduce((obj, key) => obj[key], STATE.wikiData);
+                const firstPage = Object.entries(folderData).find(([k, v]) => typeof v === 'string');
+
+                if (firstPage) {
+                    breadcrumbParts.push(`<span class="hover:text-hack-heading cursor-pointer" onclick="loadContent('${folder}', '${firstPage[0]}', '${firstPage[1]}')">${segments[segments.length - 1]}</span>`);
+                } else {
+                    breadcrumbParts.push(`<span>${segments[segments.length - 1]}</span>`);
+                }
+            } else {
+                let currentPath = "";
+                const folderParts = folder.split('/').filter(s => s);
+
+                segments.forEach((seg, i) => {
+                    const partKey = folderParts[i];
+                    currentPath = currentPath ? `${currentPath}/${partKey}` : partKey;
+
+                    // Find first page in this specific folder level
+                    const folderData = currentPath.split('/').reduce((obj, key) => obj[key], STATE.wikiData);
+                    const firstPage = Object.entries(folderData).find(([k, v]) => typeof v === 'string');
+
+                    if (firstPage) {
+                        breadcrumbParts.push(`<span class="hover:text-hack-heading cursor-pointer" onclick="loadContent('${currentPath}', '${firstPage[0]}', '${firstPage[1]}')">${seg}</span>`);
+                    } else {
+                        breadcrumbParts.push(`<span>${seg}</span>`);
+                    }
+                });
+            }
+            breadcrumbParts.push(`<span class="text-hack-green font-bold">${title}</span>`);
+
+            breadcrumbs.innerHTML = `
+                ${prev ? `<button onclick="loadContent('${prev.folder}', '${prev.title}', '${prev.file}')" class="hover:text-hack-green transition-colors mr-1" title="Previous: ${prev.title}"><i data-lucide="chevron-left" class="w-3.5 h-3.5"></i></button>` : ''}
+                ${breadcrumbParts.join(' <span class="opacity-30">/</span> ')}
+                ${next ? `<button onclick="loadContent('${next.folder}', '${next.title}', '${next.file}')" class="hover:text-hack-green transition-colors ml-1" title="Next: ${next.title}"><i data-lucide="chevron-right" class="w-3.5 h-3.5"></i></button>` : ''}
             `;
+            lucide.createIcons();
 
             // Only show loader if not in RAM cache
             if (!STATE.contentCache[`${folder}/${filename}`]) {
@@ -1303,12 +1404,7 @@
         }
 
         function preloadAdjacent(currentFolder, currentTitle) {
-            let flatList = [];
-            for (const [folder, files] of Object.entries(STATE.wikiData)) {
-                for (const [title, file] of Object.entries(files)) {
-                    flatList.push({ folder, title, file });
-                }
-            }
+            const flatList = getFlatPageList();
             const idx = flatList.findIndex(item => item.folder === currentFolder && item.title === currentTitle);
 
             [idx - 1, idx + 1].forEach(i => {
@@ -1403,12 +1499,7 @@
 
         function renderPagination(currentFolder, currentTitle) {
             const navContainer = document.getElementById('page-nav');
-            let flatList = [];
-            for (const [folder, files] of Object.entries(STATE.wikiData)) {
-                for (const [title, file] of Object.entries(files)) {
-                    flatList.push({ folder, title, file });
-                }
-            }
+            const flatList = getFlatPageList();
 
             const idx = flatList.findIndex(item => item.folder === currentFolder && item.title === currentTitle);
             if (idx === -1) return;
@@ -1440,8 +1531,18 @@
             const createTOCItem = (h, isMobile) => {
                 const li = document.createElement('li');
                 const link = document.createElement('a');
-                link.textContent = h.childNodes[0].textContent;
-                link.href = `#${h.id}`;
+
+                // Extract text content excluding anchor links and other UI elements
+                let text = "";
+                h.childNodes.forEach(node => {
+                    if (node.nodeType === Node.TEXT_NODE) {
+                        text += node.textContent;
+                    } else if (node.nodeType === Node.ELEMENT_NODE && !node.classList.contains('anchor-link')) {
+                        text += node.innerText || node.textContent;
+                    }
+                });
+                link.textContent = text.trim();
+                link.href = h.id ? `#${h.id}` : '#';
 
                 // Indentation based on tag
                 let indentClass = '';
@@ -1457,8 +1558,13 @@
                 link.onclick = (e) => {
                     e.preventDefault();
                     if (isMobile) closeTOC();
-                    document.getElementById(h.id).scrollIntoView({ behavior: 'smooth' });
-                    history.pushState(null, null, `#${h.id}`);
+                    if (h.id) {
+                        document.getElementById(h.id).scrollIntoView({ behavior: 'smooth' });
+                        history.pushState(null, null, `#${h.id}`);
+                    } else {
+                        document.getElementById('scroll-container').scrollTo({ top: 0, behavior: 'smooth' });
+                        history.pushState(null, null, window.location.pathname + window.location.search);
+                    }
                 };
                 li.appendChild(link);
                 return li;
@@ -1567,50 +1673,64 @@
             container.innerHTML = '';
             let hasContent = false;
 
-            Object.keys(STATE.wikiData).forEach(folder => {
-                if (searchResults && !searchResults[folder]) return;
+            function renderRecursive(data, parentContainer, currentPath = '', level = 0) {
+                Object.keys(data).forEach(key => {
+                    const value = data[key];
+                    const isFolder = typeof value === 'object' && value !== null;
+                    const cleanName = key.replace(/^\d+_/, '').replace(/_/g, ' ');
 
-                const cleanName = folder.replace(/^\d+_/, '').replace(/_/g, ' ');
-                const group = document.createElement('div');
-                group.className = 'nav-group mb-1';
+                    if (isFolder) {
+                        const folderPath = currentPath ? `${currentPath}/${key}` : key;
+                        if (searchResults && !searchResults[key]) return;
 
-                const btn = document.createElement('button');
-                const isExpanded = STATE.expandedSections.has(folder) || searchResults;
-                btn.className = `section-header w-full flex items-center justify-between px-2 py-2 text-gray-500 hover:text-hack-heading transition-colors rounded hover:bg-hack-bg focus:outline-none focus:bg-hack-bg ${isExpanded ? 'active' : ''}`;
-                btn.innerHTML = `
-                    <span class="flex items-center gap-2 text-[11px] font-bold uppercase tracking-widest font-mono"><i data-lucide="folder" class="w-3 h-3"></i> ${cleanName}</span>
-                    <i data-lucide="chevron-right" class="section-arrow w-3 h-3 transition-transform"></i>
-                `;
-                btn.onclick = () => {
-                    if (STATE.expandedSections.has(folder)) STATE.expandedSections.delete(folder);
-                    else STATE.expandedSections.add(folder);
-                    renderSidebar(searchResults);
-                };
+                        const group = document.createElement('div');
+                        group.className = `nav-group mb-1 ${level > 0 ? 'ml-2' : ''}`;
 
-                const list = document.createElement('div');
-                list.className = `nav-list pl-2 border-l border-hack-border/30 ml-1 ${isExpanded ? 'expanded' : 'collapsed'}`;
+                        const btn = document.createElement('button');
+                        const isExpanded = STATE.expandedSections.has(folderPath) || searchResults;
+                        btn.className = `section-header w-full flex items-center justify-between px-2 py-2 text-gray-500 hover:text-hack-heading transition-colors rounded hover:bg-hack-bg focus:outline-none focus:bg-hack-bg ${isExpanded ? 'active' : ''}`;
+                        btn.innerHTML = `
+                            <span class="flex items-center gap-2 text-[11px] font-bold uppercase tracking-widest font-mono"><i data-lucide="${level === 0 ? 'folder' : 'folder-open'}" class="w-3 h-3"></i> ${cleanName}</span>
+                            <i data-lucide="chevron-right" class="section-arrow w-3 h-3 transition-transform"></i>
+                        `;
+                        btn.onclick = () => {
+                            if (STATE.expandedSections.has(folderPath)) STATE.expandedSections.delete(folderPath);
+                            else STATE.expandedSections.add(folderPath);
+                            renderSidebar(searchResults);
+                        };
 
-                Object.keys(STATE.wikiData[folder]).forEach(title => {
-                    if (searchResults && !searchResults[folder][title]) return;
-                    hasContent = true;
-                    const filename = STATE.wikiData[folder][title];
-                    const link = document.createElement('a');
-                    link.href = `?page=${folder}/${filename}`;
-                    link.className = 'nav-link group flex items-center gap-3 px-2 py-1.5 rounded-md text-sm font-medium text-gray-400 hover:text-hack-heading hover:bg-hack-bg transition-all outline-none focus:bg-hack-bg';
-                    link.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-hack-border group-hover:bg-hack-green flex-shrink-0 transition-colors"></span> ${title}`;
-                    link.onclick = (e) => {
-                        e.preventDefault();
-                        loadContent(folder, title, filename);
-                        document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
-                        link.classList.add('active');
-                    };
-                    list.appendChild(link);
+                        const list = document.createElement('div');
+                        list.className = `nav-list ${isExpanded ? 'expanded' : 'collapsed'}`;
+
+                        renderRecursive(value, list, folderPath, level + 1);
+
+                        group.appendChild(btn);
+                        group.appendChild(list);
+                        parentContainer.appendChild(group);
+                    } else {
+                        if (searchResults && !searchResults[currentPath]?.[key]) return;
+                        hasContent = true;
+                        const filename = value;
+                        const link = document.createElement('a');
+                        const fullPath = currentPath ? `${currentPath}/${filename}` : filename;
+                        link.href = `?page=${fullPath}`;
+
+                        const isActive = STATE.currentFolder === currentPath && STATE.currentFilename === filename;
+                        link.className = `nav-link group flex items-center gap-3 px-2 py-1.5 rounded-md text-sm font-medium text-gray-400 hover:text-hack-heading hover:bg-hack-bg transition-all outline-none focus:bg-hack-bg ${isActive ? 'active' : ''}`;
+
+                        link.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-hack-border group-hover:bg-hack-green flex-shrink-0 transition-colors"></span> ${key}`;
+                        link.onclick = (e) => {
+                            e.preventDefault();
+                            loadContent(currentPath, key, filename);
+                            document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
+                            link.classList.add('active');
+                        };
+                        parentContainer.appendChild(link);
+                    }
                 });
+            }
 
-                group.appendChild(btn);
-                group.appendChild(list);
-                container.appendChild(group);
-            });
+            renderRecursive(STATE.wikiData, container);
 
             if (!hasContent && searchResults) noResults.classList.remove('hidden');
             else noResults.classList.add('hidden');
@@ -1673,12 +1793,27 @@
 
         async function performToggleVersionsPage(btn, pushHistory = true) {
             const viewer = document.getElementById('markdown-viewer');
+
+            // Update state and UI labels
+            STATE.currentFolder = "";
+            STATE.currentFilename = "";
+            STATE.currentTitle = CONFIG.ui.changelogTitle;
+            document.getElementById('label-on-this-page').innerText = CONFIG.ui.changelogTitle;
+            document.getElementById('label-mobile-toc').innerText = CONFIG.ui.changelogTitle;
+
             document.getElementById('breadcrumbs').innerHTML = `<span class="hover:text-hack-heading cursor-pointer" onclick="loadDefault()">${CONFIG.projectName}</span> <span>/</span> <span class="text-hack-green font-bold">${CONFIG.ui.changelogTitle}</span>`;
             document.getElementById('page-nav').innerHTML = '';
             document.getElementById('reading-time').innerHTML = '';
             document.getElementById('last-updated').innerHTML = '';
 
             viewer.innerHTML = `<h1>${CONFIG.ui.changelogTitle}</h1><div id="versions-list" class="space-y-4 mt-6"><div class="animate-pulse text-hack-green">${CONFIG.ui.fetchingReleasesText}</div></div>`;
+
+            // Update TOC with initial H1
+            enhanceMarkdownContent();
+            generateTOC();
+            // Update sidebar to clear active links
+            renderSidebar();
+
             if (pushHistory) window.history.pushState({ page: 'versions' }, "", "?page=changelog");
 
             try {
@@ -1704,8 +1839,15 @@
                     `;
                     list.appendChild(div);
                 });
+
+                // Update TOC with new H2s
+                enhanceMarkdownContent();
+                generateTOC();
+
             } catch (e) {
                 document.getElementById('versions-list').innerHTML = `<p class="text-red-400">Unable to load changelog. Check back later.</p>`;
+                enhanceMarkdownContent();
+                generateTOC();
             }
         }
 
