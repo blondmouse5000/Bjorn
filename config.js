@@ -18,7 +18,7 @@ const CONFIG = {
 
     // GitHub Repository (for version checking when type is "github")
     // Format: "username/repo"
-    repo: "Bjorn/Bjorn",
+    repo: "infinition/Bjorn",
     branch: "wiki",
 
     // Theme Settings
