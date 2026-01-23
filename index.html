@@ -5,6 +5,8 @@
     <meta charset="UTF-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="referrer" content="strict-origin-when-cross-origin">
+    <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self' https:; script-src 'self' 'unsafe-inline' https:; style-src 'self' 'unsafe-inline' https:; img-src 'self' data: https:; font-src 'self' https:; connect-src 'self' https:;">
     <meta name="viewport"
         content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title id="site-title">BJORN // WIKI NODE</title>
@@ -1163,7 +1165,7 @@
 
                 links.forEach(link => {
                     container.innerHTML += `
-                        <a href="${link.url}" target="_blank" class="flex items-center gap-2 px-2 py-1.5 text-xs text-gray-400 hover:text-hack-green hover:bg-hack-bg rounded transition-colors group">
+                        <a href="${link.url}" target="_blank" rel="noopener noreferrer" class="flex items-center gap-2 px-2 py-1.5 text-xs text-gray-400 hover:text-hack-green hover:bg-hack-bg rounded transition-colors group">
                             <i data-lucide="${link.icon || 'link'}" class="w-3.5 h-3.5"></i>
                             <span>${link.name}</span>
                         </a>`;
@@ -1205,7 +1207,7 @@
             if (CONFIG.social.discord) {
                 const inviteCode = CONFIG.social.discord.split('/').pop();
                 container.innerHTML += `
-                    <a href="${CONFIG.social.discord}" target="_blank" class="hover:opacity-80 transition-opacity block">
+                    <a href="${CONFIG.social.discord}" target="_blank" rel="noopener noreferrer" class="hover:opacity-80 transition-opacity block">
                         <img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fdiscord.com%2Fapi%2Finvites%2F${inviteCode}%3Fwith_counts%3Dtrue&query=%24.approximate_member_count&logo=discord&logoColor=white&style=for-the-badge&label=${CONFIG.badges.discordLabel}&color=5865F2&labelColor=2A2E35"
                             alt="Discord" class="w-full badge-sm" />
                     </a>`;
@@ -1214,7 +1216,7 @@
             if (CONFIG.social.reddit) {
                 const subreddit = CONFIG.social.reddit.split('/r/').pop().replace(/\/$/, '');
                 container.innerHTML += `
-                    <a href="${CONFIG.social.reddit}" target="_blank" class="hover:opacity-80 transition-opacity block">
+                    <a href="${CONFIG.social.reddit}" target="_blank" rel="noopener noreferrer" class="hover:opacity-80 transition-opacity block">
                         <img src="https://img.shields.io/reddit/subreddit-subscribers/${subreddit}?style=for-the-badge&logo=reddit&label=${CONFIG.badges.redditLabel}&color=FF4500&labelColor=2A2E35&logoColor=white"
                             alt="Reddit" class="w-full badge-sm" />
                     </a>`;
@@ -1223,7 +1225,7 @@
             if (CONFIG.social.github) {
                 const repoPath = CONFIG.social.github.replace('https://github.com/', '');
                 container.innerHTML += `
-                    <a href="${CONFIG.social.github}" target="_blank" class="hover:opacity-80 transition-opacity block">
+                    <a href="${CONFIG.social.github}" target="_blank" rel="noopener noreferrer" class="hover:opacity-80 transition-opacity block">
                         <img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fapi.github.com%2Frepos%2F${repoPath}&query=%24.stargazers_count&style=for-the-badge&logo=github&color=0B0C0E&labelColor=2A2E35&label=${CONFIG.badges.githubLabel}&logoColor=white"
                             alt="GitHub" class="w-full badge-sm" />
                     </a>`;
@@ -1231,7 +1233,7 @@
 
             if (CONFIG.social.buyMeACoffee) {
                 container.innerHTML += `
-                    <a href="${CONFIG.social.buyMeACoffee}" target="_blank" class="hover:opacity-80 transition-opacity block pt-4 border-t border-hack-border mt-4">
+                    <a href="${CONFIG.social.buyMeACoffee}" target="_blank" rel="noopener noreferrer" class="hover:opacity-80 transition-opacity block pt-4 border-t border-hack-border mt-4">
                         <img src="https://img.shields.io/badge/Buy%20Me%20a%20Coffee-ffdd00?style=for-the-badge&logo=buy-me-a-coffee&logoColor=black"
                             alt="Buy Me A Coffee" class="w-full badge-sm" />
                     </a>`;
@@ -2076,7 +2078,12 @@
                     if (contentMatch !== -1) {
                         const start = Math.max(0, contentMatch - 40);
                         const end = Math.min(item.content.length, contentMatch + 80);
-                        snippet = item.content.substring(start, end).replace(new RegExp(q, 'gi'), (m) => `<mark class="bg-hack-green/30 text-hack-green rounded px-0.5">${m}</mark>`);
+                        let rawSnippet = item.content.substring(start, end);
+
+                        // Sanitize first to prevent XSS, then highlight
+                        const safeSnippet = DOMPurify.sanitize(rawSnippet);
+                        snippet = safeSnippet.replace(new RegExp(q, 'gi'), (m) => `<mark class="bg-hack-green/30 text-hack-green rounded px-0.5">${m}</mark>`);
+
                         if (start > 0) snippet = "..." + snippet;
                         if (end < item.content.length) snippet = snippet + "...";
                     }
@@ -2202,7 +2209,7 @@
                             <span class="text-xs font-mono text-gray-500">${new Date(r.published_at).toLocaleDateString()}</span>
                         </div>
                         <div class="markdown-body text-sm pl-2 border-l-2 border-hack-border/50">${body}</div>
-                        <a href="${r.html_url}" target="_blank" class="text-xs mt-2 inline-block opacity-50 hover:opacity-100">View on GitHub &rarr;</a>
+                        <a href="${r.html_url}" target="_blank" rel="noopener noreferrer" class="text-xs mt-2 inline-block opacity-50 hover:opacity-100">View on GitHub &rarr;</a>
                     `;
                     list.appendChild(div);
                 });
