@@ -92,6 +92,11 @@ const CONFIG = {
     logoPath: "assets/bjorn.png",
     logoPlaceholder: "https://placehold.co/40x40/111214/22c55e?text=A",
 
+    // PWA & SEO Settings
+    themeColor: "#0B0C0E",
+    accentColor: "#22c55e",
+    manifestPath: "manifest.json",
+
     // Social Links
     // Set to null or empty string to hide the link
     social: {

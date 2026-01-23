@@ -3,6 +3,8 @@
 
 <head>
     <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="referrer" content="strict-origin-when-cross-origin">
     <meta name="viewport"
         content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title id="site-title">BJORN // WIKI NODE</title>
@@ -23,16 +25,16 @@
     <meta property="twitter:image" id="tw-image" content="assets/bjorn.png">
 
     <!-- Favicon -->
-    <link rel="icon" type="image/png" sizes="32x32" href="assets/bjorn.png">
-    <link rel="icon" type="image/png" sizes="16x16" href="assets/bjorn.png">
-    <link rel="apple-touch-icon" sizes="180x180" href="assets/bjorn.png">
-    <link rel="mask-icon" href="assets/bjorn.png" color="#22c55e">
-    <meta name="apple-mobile-web-app-title" content="BjornWiki">
-    <meta name="application-name" content="BjornWiki">
-    <meta name="msapplication-TileColor" content="#0B0C0E">
-    <meta name="theme-color" content="#0B0C0E">
+    <link rel="icon" id="favicon-32" type="image/png" sizes="32x32" href="assets/bjorn.png">
+    <link rel="icon" id="favicon-16" type="image/png" sizes="16x16" href="assets/bjorn.png">
+    <link rel="apple-touch-icon" id="apple-icon" sizes="180x180" href="assets/bjorn.png">
+    <link rel="mask-icon" id="mask-icon" href="assets/bjorn.png" color="#22c55e">
+    <meta name="apple-mobile-web-app-title" id="apple-title" content="BjornWiki">
+    <meta name="application-name" id="app-name" content="BjornWiki">
+    <meta name="msapplication-TileColor" id="ms-tile-color" content="#0B0C0E">
+    <meta name="theme-color" id="theme-color-meta" content="#0B0C0E">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <link rel="manifest" href="manifest.json">
+    <link rel="manifest" id="manifest-link" href="manifest.json">
 
     <!-- Configuration -->
     <script src="config.js"></script>
@@ -1121,6 +1123,31 @@
                     breadcrumbContainer.classList.remove('is-sticky');
                 }
             }
+
+            // SEO & PWA Dynamic Updates
+            const fullTitle = `${CONFIG.projectName} // ${CONFIG.projectSubtitle}`;
+            document.getElementById('og-title').content = fullTitle;
+            document.getElementById('tw-title').content = fullTitle;
+            document.getElementById('og-url').content = window.location.href;
+            document.getElementById('tw-url').content = window.location.href;
+            document.getElementById('og-image').content = CONFIG.logoPath;
+            document.getElementById('tw-image').content = CONFIG.logoPath;
+            document.getElementById('og-desc').content = CONFIG.description;
+            document.getElementById('tw-desc').content = CONFIG.description;
+
+            document.getElementById('favicon-32').href = CONFIG.logoPath;
+            document.getElementById('favicon-16').href = CONFIG.logoPath;
+            document.getElementById('apple-icon').href = CONFIG.logoPath;
+
+            const maskIcon = document.getElementById('mask-icon');
+            maskIcon.href = CONFIG.logoPath;
+            maskIcon.setAttribute('color', CONFIG.accentColor || '#22c55e');
+
+            document.getElementById('apple-title').content = CONFIG.projectName;
+            document.getElementById('app-name').content = CONFIG.projectName;
+            document.getElementById('ms-tile-color').content = CONFIG.themeColor || '#0B0C0E';
+            document.getElementById('theme-color-meta').content = CONFIG.themeColor || '#0B0C0E';
+            document.getElementById('manifest-link').href = CONFIG.manifestPath || 'manifest.json';
 
             renderCustomLinks();
             renderFooter();
