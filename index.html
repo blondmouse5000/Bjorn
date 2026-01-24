@@ -1466,7 +1466,8 @@
                 if (!branch) continue;
                 debugLog(`[Bjorn] 🌐 Fetching structure from GitHub API: ${STATE.repo}/${branch}`);
                 try {
-                    const res = await fetch(`https://api.github.com/repos/${STATE.repo}/git/trees/${branch}?recursive=1`);
+
+                    const res = await fetch(`https://api.github.com/repos/${STATE.repo}/commits?path=${path}&sha=${STATE.branch}&page=1&per_page=1`);
                     if (!res.ok) {
                         debugLog(`[Bjorn] ⚠️ Branch "${branch}" failed (${res.status})`);
                         continue;
