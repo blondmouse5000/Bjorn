@@ -1,0 +1,251 @@
+name: Central Wiki Sync Logic
+
+on:
+  workflow_call:
+    inputs:
+      source_repo:
+        required: false
+        type: string
+        default: "infinition/AcidWiki"
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+jobs:
+  core-sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Caller Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Ensure Wiki Directory Exists
+        run: mkdir -p wiki/docs wiki/themes wiki/assets .well-known
+
+      # 1. Onboarding Automatique
+      - name: Create Default Config if Missing
+        run: |
+          if [ ! -f "acidwiki.json" ]; then
+            echo "⚠️ acidwiki.json not found. Creating default configuration..."
+            cat <<EOF > acidwiki.json
+          {
+            "debug": false,
+            "social": {
+              "discord": null,
+              "reddit": null
+            },
+            "buymeacoffee": "https://buymeacoffee.com/infinition"
+          }
+          EOF
+          else
+            echo "✅ acidwiki.json found. Keeping existing configuration."
+          fi
+
+      - name: Sync Core Files from Source
+        env:
+          SOURCE_REPO: ${{ inputs.source_repo }}
+        run: |
+          # A. CLONE DU MASTER
+          echo "⬇️ Cloning engine from $SOURCE_REPO..."
+          git clone --depth 1 --branch main https://github.com/$SOURCE_REPO.git temp_source
+          
+          # B. PROTECTION DES ASSETS LOCAUX
+          
+          # 1. Protection du Logo
+          if [ -f "wiki/assets/logo.png" ]; then
+            echo "🛡️ Custom logo detected. Protecting local version..."
+            rm -f temp_source/wiki/assets/logo.png
+          fi
+
+          # 2. Protection des Thèmes
+          if [ -d "wiki/themes" ]; then
+            for local_theme in wiki/themes/*.css; do
+              if [ -f "$local_theme" ]; then
+                theme_name=$(basename "$local_theme")
+                if [ -f "temp_source/wiki/themes/$theme_name" ]; then
+                  echo "🛡️ Custom theme detected ($theme_name). Keeping local version."
+                  rm "temp_source/wiki/themes/$theme_name"
+                fi
+              fi
+            done
+          fi
+
+          # 3. Protection Security (Racine & .well-known)
+          if [ -f "security.txt" ]; then
+             echo "🛡️ Custom security.txt detected (root). Keeping local version."
+             rm -f temp_source/security.txt
+          fi
+          if [ -f ".well-known/security.txt" ]; then
+             echo "🛡️ Custom .well-known/security.txt detected. Keeping local version."
+             rm -f temp_source/.well-known/security.txt
+          fi
+
+          # C. COPIE DES FICHIERS (CHEMINS CORRIGÉS)
+          
+          # Moteur & Système (Tout est à la racine de la source)
+          cp -fv temp_source/index.html .
+          cp -fv temp_source/manifest.json .
+          cp -fv temp_source/sw.js .
+          cp -fv temp_source/robots.txt . || true
+          cp -fv temp_source/.nojekyll . || true
+          
+          # Fichiers Security (S'ils n'ont pas été supprimés par la protection)
+          if [ -f "temp_source/security.txt" ]; then cp -fv temp_source/security.txt .; fi
+          
+          # Copie récursive de .well-known s'il existe dans la source
+          if [ -d "temp_source/.well-known" ]; then
+             # On copie le contenu sans écraser ce qui est protégé
+             cp -rn temp_source/.well-known/* .well-known/ || true
+          fi
+          
+          # Config Template
+          cp -rv temp_source/wiki/config.js wiki/
+          
+          # Thèmes (Safe Copy - vérifie s'il reste des fichiers)
+          if [ -d "temp_source/wiki/themes" ] && [ "$(ls -A temp_source/wiki/themes)" ]; then
+             echo "📦 Copying new themes..."
+             cp -r temp_source/wiki/themes/* wiki/themes/
+          else
+             echo "✅ No new themes to copy."
+          fi
+
+          # Assets (Safe Copy - vérifie s'il reste des fichiers)
+          if [ -d "temp_source/wiki/assets" ] && [ "$(ls -A temp_source/wiki/assets)" ]; then
+             echo "📦 Copying new assets..."
+             cp -r temp_source/wiki/assets/* wiki/assets/
+          else
+             echo "✅ No new assets to copy."
+          fi
+          
+          # Nettoyage
+          rm -rf temp_source
+
+      - name: Dynamic Config Injection
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO_FULL: ${{ github.repository }}
+        run: |
+          CONFIG_FILE="wiki/config.js"
+          JSON_FILE="acidwiki.json"
+          MANIFEST_FILE="manifest.json"
+          
+          # --- 1. DÉTECTION ---
+          REPO_NAME=$(echo "$REPO_FULL" | awk -F '/' '{print $2}')
+          YEAR=$(date +'%Y')
+          
+          TAG_REL=$(gh api repos/$REPO_FULL/releases/latest --jq .tag_name 2>/dev/null || echo "")
+          TAG_LIST=$(gh api repos/$REPO_FULL/tags --jq '.[0].name' 2>/dev/null || echo "")
+          
+          LATEST_TAG=""
+          if [[ -n "$TAG_REL" && "$TAG_REL" != *\{* ]]; then
+             LATEST_TAG="$TAG_REL"
+          elif [[ -n "$TAG_LIST" && "$TAG_LIST" != *\{* ]]; then
+             LATEST_TAG="$TAG_LIST"
+          fi
+          
+          echo "Repo: $REPO_NAME | Version finale: '$LATEST_TAG'"
+
+          # --- 2. LECTURE JSON ---
+          DISCORD=""
+          REDDIT=""
+          COFFEE="https://buymeacoffee.com/infinition"
+          DEBUG_MODE="false"
+
+          if [ -f "$JSON_FILE" ]; then
+            echo "Loading acidwiki.json..."
+            DISCORD=$(jq -r '.social.discord // empty' $JSON_FILE)
+            REDDIT=$(jq -r '.social.reddit // empty' $JSON_FILE)
+            JSON_COFFEE=$(jq -r '.buymeacoffee // empty' $JSON_FILE)
+            if [ -n "$JSON_COFFEE" ]; then COFFEE=$JSON_COFFEE; fi
+            DEBUG_VAL=$(jq -r '.debug' $JSON_FILE)
+            if [ "$DEBUG_VAL" == "true" ]; then DEBUG_MODE="true"; fi
+          fi
+
+          # --- 3. INJECTION CONFIG JS ---
+          
+          # Identité
+          sed -i "s|projectName: \".*\"|projectName: \"${REPO_NAME^^}\"|g" $CONFIG_FILE
+          sed -i "s|projectSubtitle: \".*\"|projectSubtitle: \"${REPO_NAME^^} WIKI\"|g" $CONFIG_FILE
+          sed -i "s|description: \".*\"|description: \"Official Documentation and Wiki for ${REPO_NAME}\"|g" $CONFIG_FILE
+          sed -i "s|repo: \".*\"|repo: \"$REPO_FULL\"|g" $CONFIG_FILE
+          
+          # Footer & Logo
+          sed -i "s|footerText: \".*\"|footerText: \"© $YEAR ${REPO_NAME^^} WIKI - All rights reserved\"|g" $CONFIG_FILE
+          sed -i "s|logoPath: \".*\"|logoPath: \"wiki/assets/logo.png\"|g" $CONFIG_FILE
+          sed -i "s|manifestPath: \".*\"|manifestPath: \"manifest.json\"|g" $CONFIG_FILE
+          sed -i "s|debug: false|debug: $DEBUG_MODE|g" $CONFIG_FILE
+
+          # Github & Social
+          sed -i "s|github: \".*\"|github: \"https://github.com/$REPO_FULL\"|g" $CONFIG_FILE
+          sed -i "s|githubLabel: \".*\"|githubLabel: \"${REPO_NAME^^}\"|g" $CONFIG_FILE
+          sed -i "s|buyMeACoffee: \".*\"|buyMeACoffee: \"$COFFEE\"|g" $CONFIG_FILE
+          
+          if [ -n "$DISCORD" ]; then sed -i "s|discord: .*|discord: \"$DISCORD\",|g" $CONFIG_FILE
+          else sed -i "s|discord: .*|discord: null,|g" $CONFIG_FILE; fi
+          
+          if [ -n "$REDDIT" ]; then sed -i "s|reddit: .*|reddit: \"$REDDIT\",|g" $CONFIG_FILE
+          else sed -i "s|reddit: .*|reddit: null,|g" $CONFIG_FILE; fi
+          
+          # Menus & Versioning
+          sed -i "s|top: \[.*|top: [],|g" $CONFIG_FILE
+          sed -i "s|bottom: \[.*|bottom: []|g" $CONFIG_FILE
+          sed -i "s|type: \"github\"|type: \"local\"|g" $CONFIG_FILE
+          
+          if [ -n "$LATEST_TAG" ]; then
+             sed -i "s|manualVersion: \".*\"|manualVersion: \"$LATEST_TAG\"|g" $CONFIG_FILE
+          else
+             sed -i "s|manualVersion: \".*\"|manualVersion: \"\"|g" $CONFIG_FILE
+          fi
+          sed -i "s|manualDate: \".*\"|manualDate: \"$(date +'%Y-%m-%d')\"|g" $CONFIG_FILE
+
+          # --- 4. INJECTION MANIFEST PWA ---
+          echo "Injecting Manifest Data..."
+          if [ -f "$MANIFEST_FILE" ]; then
+            jq --arg name "${REPO_NAME^^} WIKI" \
+               --arg short "$REPO_NAME" \
+               --arg desc "Official Documentation and Wiki for $REPO_NAME" \
+               --arg icon "wiki/assets/logo.png" \
+               '.name = $name | .short_name = $short | .description = $desc | .icons[].src = $icon | .shortcuts[].icons[].src = $icon' \
+               $MANIFEST_FILE > manifest.tmp && mv manifest.tmp $MANIFEST_FILE
+          fi
+
+          # --- 5. INJECTION SECURITY.TXT (DYNAMIQUE) ---
+          # Calcule la date d'expiration (+1 an)
+          EXP_DATE=$(date -d "+1 year" -u +"%Y-%m-%dT%H:%M:%S.000Z")
+          
+          update_security_file() {
+            local file=$1
+            if [ -f "$file" ]; then
+              echo "Updating $file..."
+              # Remplace l'ancien repo (source) par le nouveau (ex: infinition/AcidWiki -> infinition/Bjorn)
+              sed -i "s|infinition/AcidWiki|$REPO_FULL|g" "$file"
+              # Met à jour la date d'expiration
+              sed -i "s|Expires: .*|Expires: $EXP_DATE|g" "$file"
+            fi
+          }
+          
+          update_security_file "security.txt"
+          update_security_file ".well-known/security.txt"
+
+      - name: Commit and Push Changes
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          
+          # Ajout de tous les fichiers (Système, Contenu, Sécurité)
+          git add index.html wiki/ acidwiki.json manifest.json sw.js robots.txt .nojekyll security.txt .well-known/
+          
+          git diff --quiet && git diff --staged --quiet || (git commit -m "chore: update wiki config [skip ci]" && git push)
+      
+      - name: Auto-Configure GitHub Pages
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          gh api "repos/$REPO/pages" -X POST -F "source[branch]=main" -F "source[path]=/" --silent || true
+          OWNER="${REPO%%/*}"
+          REPO_NAME="${REPO#*/}"
+          gh api "repos/$REPO" -X PATCH -F "homepage=https://$OWNER.github.io/$REPO_NAME/" --silent || true
