@@ -1461,13 +1461,18 @@
                 return null;
             }
 
+            // On essaie la branche configurée (wiki), puis 'wiki' en dur, puis 'master'
             const branchesToTry = [CONFIG.branch, 'wiki', 'master'];
+
             for (const branch of branchesToTry) {
                 if (!branch) continue;
                 debugLog(`[Bjorn] 🌐 Fetching structure from GitHub API: ${STATE.repo}/${branch}`);
-                try {
 
-                    const res = await fetch(`https://api.github.com/repos/${STATE.repo}/commits?path=${path}&sha=${STATE.branch}&page=1&per_page=1`);
+                try {
+                    // C'EST ICI QUE L'ERREUR SE TROUVAIT PROBABLEMENT
+                    // On utilise git/trees et la variable 'branch', PAS 'path'
+                    const res = await fetch(`https://api.github.com/repos/${STATE.repo}/git/trees/${branch}?recursive=1`);
+
                     if (!res.ok) {
                         debugLog(`[Bjorn] ⚠️ Branch "${branch}" failed (${res.status})`);
                         continue;
@@ -1513,6 +1518,7 @@
                     const sortedStructure = sortStructure(structure);
                     debugLog(`[Bjorn] ✅ GitHub discovery complete: Found ${fileCount} files`);
                     return Object.keys(sortedStructure).length > 0 ? sortedStructure : null;
+
                 } catch (e) {
                     debugLog(`[Bjorn] ❌ Error fetching branch "${branch}":`, e);
                 }
@@ -2113,7 +2119,10 @@
 
             try {
                 const path = `wiki/docs/${folder}/${filename}`;
-                const res = await fetch(`https://api.github.com/repos/${STATE.repo}/commits?path=${path}&page=1&per_page=1`);
+                // C'EST ICI QU'IL FAUT AJOUTER &sha=${STATE.branch}
+                // Cette URL utilise 'commits', 'path' et 'sha'
+                const res = await fetch(`https://api.github.com/repos/${STATE.repo}/commits?path=${path}&sha=${STATE.branch}&page=1&per_page=1`);
+
                 if (res.ok) {
                     const data = await res.json();
                     if (data.length > 0) {
