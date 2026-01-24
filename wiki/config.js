@@ -5,9 +5,9 @@
  */
 const CONFIG = {
     // Project Information (Sera remplacé par le nom du Repo)
-    projectName: "ACIDWIKI",
-    projectSubtitle: "ACIDWIKI WIKI",
-    description: "Official Documentation and Wiki for AcidWiki",
+    projectName: "Bjorn",
+    projectSubtitle: "Bjorn WIKI",
+    description: "Official Documentation and Wiki for Bjorn",
 
     // Versioning Settings
     versioning: {
@@ -17,7 +17,7 @@ const CONFIG = {
     },
 
     // GitHub Repository
-    repo: "infinition/AcidWiki",
+    repo: "infinition/Bjorn",
     branch: "main",
 
     // Theme Settings
@@ -62,7 +62,7 @@ const CONFIG = {
     },
 
     // Footer
-    footerText: "© 2026 ACIDWIKI WIKI - All rights reserved",
+    footerText: "© 2026 Bjorn WIKI - All rights reserved",
 
     // UI Strings
     ui: {
@@ -97,7 +97,7 @@ const CONFIG = {
     social: {
         discord: null,
         reddit: null,
-        github: "https://github.com/infinition/AcidWiki", // Virgule respectée par le script
+        github: "https://github.com/infinition/Bjorn", // Virgule respectée par le script
         buyMeACoffee: "https://buymeacoffee.com/infinition"
     },
 
@@ -105,6 +105,6 @@ const CONFIG = {
     badges: {
         discordLabel: "COMMUNITY",
         redditLabel: "REDDIT",
-        githubLabel: "ACIDWIKI"
+        githubLabel: "BJORN"
     }
 };
