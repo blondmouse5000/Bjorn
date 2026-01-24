@@ -1,5 +1,5 @@
 /**
- * AcidWiki Configuration (Master Template)
+ * Bjorn Wiki Configuration (Master Template)
  * Ce fichier est écrasé dynamiquement par le workflow GitHub Actions.
  * Ne modifiez pas les valeurs ici pour un projet spécifique, utilisez acidwiki.json.
  */
