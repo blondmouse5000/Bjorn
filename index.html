@@ -1453,24 +1453,18 @@
                 showErrorState(e.message);
             }
         }
-
         async function fetchWikiStructureFromAPI() {
-            // CORRECTION : On autorise l'API même en mode local, tant qu'il y a un repo configuré
-            if (!STATE.repo) {
-                debugLog('[Bjorn] ⏭️ Skipping GitHub API (no repo configured)');
-                return null;
-            }
+            if (!STATE.repo) return null;
 
-            // On essaie la branche configurée (wiki), puis 'wiki' en dur, puis 'master'
-            const branchesToTry = [CONFIG.branch, 'wiki', 'master'];
+            // On essaie la branche configurée, puis 'wiki', puis 'main'
+            const branchesToTry = [CONFIG.branch, 'wiki', 'main'];
 
             for (const branch of branchesToTry) {
                 if (!branch) continue;
                 debugLog(`[Bjorn] 🌐 Fetching structure from GitHub API: ${STATE.repo}/${branch}`);
 
                 try {
-                    // C'EST ICI QUE L'ERREUR SE TROUVAIT PROBABLEMENT
-                    // On utilise git/trees et la variable 'branch', PAS 'path'
+                    // API Call pour récupérer l'arbre complet (recursive)
                     const res = await fetch(`https://api.github.com/repos/${STATE.repo}/git/trees/${branch}?recursive=1`);
 
                     if (!res.ok) {
@@ -1478,16 +1472,25 @@
                         continue;
                     }
 
-                    debugLog(`[Bjorn] ✅ GitHub API response received for branch: ${branch}`);
                     const data = await res.json();
+
+                    // DEBUG: Décommentez la ligne ci-dessous si ça affiche encore "Found 0 files" pour voir ce que GitHub renvoie
+                    // console.log("GitHub Tree:", data.tree); 
+
                     const structure = {};
                     let fileCount = 0;
 
                     data.tree.forEach(item => {
-                        if (item.path.startsWith('wiki/docs/') && item.type === 'blob' && item.path.endsWith('.md')) {
-                            const relativePath = item.path.replace('wiki/docs/', '');
+                        // On cherche des fichiers .md qui sont dans un dossier 'docs' (peu importe le préfixe parent)
+                        // Cela marchera pour 'wiki/docs/File.md' ET 'docs/File.md'
+                        if (item.type === 'blob' && item.path.endsWith('.md') && (item.path.includes('/docs/') || item.path.startsWith('docs/'))) {
+
+                            // On extrait la partie relative après "docs/" pour construire le menu
+                            // Ex: "wiki/docs/01_General/Intro.md" -> "01_General/Intro.md"
+                            const relativePath = item.path.substring(item.path.indexOf('docs/') + 5);
                             const parts = relativePath.split('/');
 
+                            // Construction de l'objet de structure
                             let currentLevel = structure;
                             for (let i = 0; i < parts.length - 1; i++) {
                                 const folder = parts[i];
@@ -1496,13 +1499,17 @@
                             }
 
                             const filename = parts[parts.length - 1];
+                            // On stocke le chemin COMPLET pour que le fetch plus tard puisse le trouver
+                            // C'est la clé du fix : on garde 'item.path' qui est le vrai chemin GitHub
                             const title = decodeURIComponent(filename.replace(/\.md$/, '').replace(/_/g, ' '));
-                            currentLevel[title] = filename;
+
+                            // Petite astuce : on stocke le vrai chemin API dans la structure
+                            currentLevel[title] = item.path;
                             fileCount++;
                         }
                     });
 
-                    // Sort folders and files recursively
+                    // Fonction de tri (inchangée)
                     function sortStructure(obj) {
                         const sorted = {};
                         Object.keys(obj).sort().forEach(key => {
@@ -1517,7 +1524,8 @@
 
                     const sortedStructure = sortStructure(structure);
                     debugLog(`[Bjorn] ✅ GitHub discovery complete: Found ${fileCount} files`);
-                    return Object.keys(sortedStructure).length > 0 ? sortedStructure : null;
+
+                    if (fileCount > 0) return sortedStructure;
 
                 } catch (e) {
                     debugLog(`[Bjorn] ❌ Error fetching branch "${branch}":`, e);
