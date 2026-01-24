@@ -18,7 +18,7 @@ const CONFIG = {
 
     // GitHub Repository
     repo: "infinition/Bjorn",
-    branch: "main",
+    branch: "wiki",
 
     // Theme Settings
     themes: [
