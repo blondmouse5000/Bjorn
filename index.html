@@ -1111,8 +1111,8 @@
             contentCache: {},
             searchIndex: [],
             expandedSections: new Set(),
-            repo: "infinition/Bjorn", // Fallback
-            branch: "wiki",
+            repo: "infinition/AcidWiki", // Fallback
+            branch: "main",
             currentTitle: "",
             currentFolder: "",
             currentFilename: ""
@@ -1407,28 +1407,28 @@
         // --- 4. WIKI CORE ---
         async function initWiki() {
             try {
-                debugLog('[Bjorn] 🚀 Initializing wiki...');
+                debugLog('[AcidWiki] 🚀 Initializing wiki...');
 
                 // Try GitHub API first for production
                 let structure = await fetchWikiStructureFromAPI();
 
                 // If API fails, try local filesystem scanning (for local HTTP servers)
                 if (!structure) {
-                    debugLog('[Bjorn] 🔄 Trying local filesystem scan...');
+                    debugLog('[AcidWiki] 🔄 Trying local filesystem scan...');
                     structure = await scanLocalFilesystem();
                 }
 
                 if (!structure || Object.keys(structure).length === 0) {
                     if (CONFIG.features.showRootReadme) {
-                        debugLog('[Bjorn] ℹ️ No docs found, but root README is enabled. Proceeding...');
+                        debugLog('[AcidWiki] ℹ️ No docs found, but root README is enabled. Proceeding...');
                         structure = {}; // Empty but valid
                     } else {
-                        console.error('[Bjorn] ❌ No wiki content found!');
+                        console.error('[AcidWiki] ❌ No wiki content found!');
                         throw new Error("No wiki content found. Please add .md files to wiki/docs/");
                     }
                 }
 
-                debugLog('[Bjorn] ✅ Wiki structure loaded successfully');
+                debugLog('[AcidWiki] ✅ Wiki structure loaded successfully');
                 STATE.wikiData = structure;
 
                 const firstFolder = Object.keys(STATE.wikiData)[0];
@@ -1453,44 +1453,35 @@
                 showErrorState(e.message);
             }
         }
+
         async function fetchWikiStructureFromAPI() {
-            if (!STATE.repo) return null;
+            // CORRECTION : On autorise l'API même en mode local, tant qu'il y a un repo configuré
+            if (!STATE.repo) {
+                debugLog('[AcidWiki] ⏭️ Skipping GitHub API (no repo configured)');
+                return null;
+            }
 
-            // On essaie la branche configurée, puis 'wiki', puis 'main'
-            const branchesToTry = [CONFIG.branch, 'wiki', 'main'];
-
+            const branchesToTry = [CONFIG.branch, 'main', 'master'];
             for (const branch of branchesToTry) {
                 if (!branch) continue;
-                debugLog(`[Bjorn] 🌐 Fetching structure from GitHub API: ${STATE.repo}/${branch}`);
-
+                debugLog(`[AcidWiki] 🌐 Fetching structure from GitHub API: ${STATE.repo}/${branch}`);
                 try {
-                    // API Call pour récupérer l'arbre complet (recursive)
                     const res = await fetch(`https://api.github.com/repos/${STATE.repo}/git/trees/${branch}?recursive=1`);
-
                     if (!res.ok) {
-                        debugLog(`[Bjorn] ⚠️ Branch "${branch}" failed (${res.status})`);
+                        debugLog(`[AcidWiki] ⚠️ Branch "${branch}" failed (${res.status})`);
                         continue;
                     }
 
+                    debugLog(`[AcidWiki] ✅ GitHub API response received for branch: ${branch}`);
                     const data = await res.json();
-
-                    // DEBUG: Décommentez la ligne ci-dessous si ça affiche encore "Found 0 files" pour voir ce que GitHub renvoie
-                    // console.log("GitHub Tree:", data.tree); 
-
                     const structure = {};
                     let fileCount = 0;
 
                     data.tree.forEach(item => {
-                        // On cherche des fichiers .md qui sont dans un dossier 'docs' (peu importe le préfixe parent)
-                        // Cela marchera pour 'wiki/docs/File.md' ET 'docs/File.md'
-                        if (item.type === 'blob' && item.path.endsWith('.md') && (item.path.includes('/docs/') || item.path.startsWith('docs/'))) {
-
-                            // On extrait la partie relative après "docs/" pour construire le menu
-                            // Ex: "wiki/docs/01_General/Intro.md" -> "01_General/Intro.md"
-                            const relativePath = item.path.substring(item.path.indexOf('docs/') + 5);
+                        if (item.path.startsWith('wiki/docs/') && item.type === 'blob' && item.path.endsWith('.md')) {
+                            const relativePath = item.path.replace('wiki/docs/', '');
                             const parts = relativePath.split('/');
 
-                            // Construction de l'objet de structure
                             let currentLevel = structure;
                             for (let i = 0; i < parts.length - 1; i++) {
                                 const folder = parts[i];
@@ -1499,17 +1490,13 @@
                             }
 
                             const filename = parts[parts.length - 1];
-                            // On stocke le chemin COMPLET pour que le fetch plus tard puisse le trouver
-                            // C'est la clé du fix : on garde 'item.path' qui est le vrai chemin GitHub
                             const title = decodeURIComponent(filename.replace(/\.md$/, '').replace(/_/g, ' '));
-
-                            // Petite astuce : on stocke le vrai chemin API dans la structure
-                            currentLevel[title] = item.path;
+                            currentLevel[title] = filename;
                             fileCount++;
                         }
                     });
 
-                    // Fonction de tri (inchangée)
+                    // Sort folders and files recursively
                     function sortStructure(obj) {
                         const sorted = {};
                         Object.keys(obj).sort().forEach(key => {
@@ -1523,33 +1510,31 @@
                     }
 
                     const sortedStructure = sortStructure(structure);
-                    debugLog(`[Bjorn] ✅ GitHub discovery complete: Found ${fileCount} files`);
-
-                    if (fileCount > 0) return sortedStructure;
-
+                    debugLog(`[AcidWiki] ✅ GitHub discovery complete: Found ${fileCount} files`);
+                    return Object.keys(sortedStructure).length > 0 ? sortedStructure : null;
                 } catch (e) {
-                    debugLog(`[Bjorn] ❌ Error fetching branch "${branch}":`, e);
+                    debugLog(`[AcidWiki] ❌ Error fetching branch "${branch}":`, e);
                 }
             }
             return null;
         }
 
         async function scanLocalFilesystem() {
-            debugLog('[Bjorn] 🔍 Starting local filesystem scan...');
+            debugLog('[AcidWiki] 🔍 Starting local filesystem scan...');
             try {
                 // Try to fetch the wiki/docs/ directory listing
                 const res = await fetch('./wiki/docs/');
                 if (!res.ok) {
-                    debugLog('[Bjorn] ❌ Cannot access wiki/docs/ directory');
+                    debugLog('[AcidWiki] ❌ Cannot access wiki/docs/ directory');
                     return null;
                 }
 
-                debugLog('[Bjorn] ✅ Successfully accessed wiki/docs/');
+                debugLog('[AcidWiki] ✅ Successfully accessed wiki/docs/');
                 const structure = {};
 
                 // Recursive function to scan a folder
                 async function scanFolder(path = '', parentStructure = structure) {
-                    debugLog(`[Bjorn] 📂 Scanning folder: wiki/docs/${path || '(root)'}`);
+                    debugLog(`[AcidWiki] 📂 Scanning folder: wiki/docs/${path || '(root)'}`);
 
                     const folderUrl = path ? `./wiki/docs/${path}/` : './wiki/docs/';
                     const folderRes = await fetch(folderUrl);
@@ -1563,7 +1548,7 @@
                     let filesFound = 0;
                     let foldersFound = 0;
 
-                    debugLog(`[Bjorn] 🔎 Found ${links.length} links in HTML`);
+                    debugLog(`[AcidWiki] 🔎 Found ${links.length} links in HTML`);
 
                     for (const link of links) {
                         const href = link.getAttribute('href');
@@ -1573,7 +1558,7 @@
 
                         // Skip navigation links
                         if (linkText === '..' || linkText === '~') {
-                            debugLog(`[Bjorn] ⏭️ Skipped navigation link: "${linkText}"`);
+                            debugLog(`[AcidWiki] ⏭️ Skipped navigation link: "${linkText}"`);
                             continue;
                         }
 
@@ -1584,14 +1569,14 @@
 
                         // Only process links that contain wiki/docs in their path
                         if (!href.includes(baseDocsPath)) {
-                            debugLog(`[Bjorn] ⏭️ Skipped (not in wiki/docs): "${href}"`);
+                            debugLog(`[AcidWiki] ⏭️ Skipped (not in wiki/docs): "${href}"`);
                             continue;
                         }
 
                         // Extract the part after /wiki/docs/
                         const afterDocs = href.split(baseDocsPath)[1];
                         if (!afterDocs) {
-                            debugLog(`[Bjorn] ⏭️ Skipped (invalid path after wiki/docs): "${href}"`);
+                            debugLog(`[AcidWiki] ⏭️ Skipped (invalid path after wiki/docs): "${href}"`);
                             continue;
                         }
 
@@ -1600,7 +1585,7 @@
                         // If we're scanning '01_General', afterDocs should start with '01_General/' and next segment is the child
                         const expectedPrefix = path ? `${path}/` : '';
                         if (path && !afterDocs.startsWith(expectedPrefix)) {
-                            debugLog(`[Bjorn] ⏭️ Skipped (not in current path "${path}"): afterDocs="${afterDocs}"`);
+                            debugLog(`[AcidWiki] ⏭️ Skipped (not in current path "${path}"): afterDocs="${afterDocs}"`);
                             continue;
                         }
 
@@ -1610,7 +1595,7 @@
                         // Only accept direct children: should not contain additional slashes (except trailing for folders)
                         const withoutTrailingSlash = relativePart.endsWith('/') ? relativePart.slice(0, -1) : relativePart;
                         if (withoutTrailingSlash.includes('/')) {
-                            debugLog(`[Bjorn] ⏭️ Skipped (not a direct child): relativePart="${relativePart}"`);
+                            debugLog(`[AcidWiki] ⏭️ Skipped (not a direct child): relativePart="${relativePart}"`);
                             continue;
                         }
 
@@ -1637,13 +1622,13 @@
                             }
 
                             if (!folderName || folderName.trim() === '' || folderName === '..') {
-                                debugLog(`[Bjorn] ⏭️ Skipping invalid folder name: "${folderName}"`);
+                                debugLog(`[AcidWiki] ⏭️ Skipping invalid folder name: "${folderName}"`);
                                 continue;
                             }
 
                             const fullPath = path ? `${path}/${folderName}` : folderName;
 
-                            debugLog(`[Bjorn] 📁 Found folder: ${folderName} (${fullPath})`);
+                            debugLog(`[AcidWiki] 📁 Found folder: ${folderName} (${fullPath})`);
                             foldersFound++;
 
                             if (!parentStructure[folderName]) {
@@ -1653,15 +1638,15 @@
                             try {
                                 await scanFolder(fullPath, parentStructure[folderName]);
                             } catch (e) {
-                                console.warn(`[Bjorn] ⚠️ Failed to scan subfolder ${fullPath}:`, e);
+                                console.warn(`[AcidWiki] ⚠️ Failed to scan subfolder ${fullPath}:`, e);
                             }
                         } else {
-                            debugLog(`[Bjorn] ⏭️ Skipped non-markdown file: "${href}"`);
+                            debugLog(`[AcidWiki] ⏭️ Skipped non-markdown file: "${href}"`);
                         }
                     }
 
-                    debugLog(`[Bjorn] ✓ Folder scan complete: ${filesFound} files, ${foldersFound} subfolders`);
-                    debugLog(`[Bjorn] 📊 Structure for "${path || 'root'}":`, Object.keys(parentStructure));
+                    debugLog(`[AcidWiki] ✓ Folder scan complete: ${filesFound} files, ${foldersFound} subfolders`);
+                    debugLog(`[AcidWiki] 📊 Structure for "${path || 'root'}":`, Object.keys(parentStructure));
                 }
 
                 // Start recursive scanning from root
@@ -1683,12 +1668,12 @@
                 const sortedStructure = sortStructure(structure);
 
                 const totalItems = JSON.stringify(sortedStructure).split('.md').length - 1;
-                debugLog(`[Bjorn] ✅ Scan complete! Found ${totalItems} markdown files`);
-                debugLog('[Bjorn] 📊 Structure:', sortedStructure);
+                debugLog(`[AcidWiki] ✅ Scan complete! Found ${totalItems} markdown files`);
+                debugLog('[AcidWiki] 📊 Structure:', sortedStructure);
 
                 return Object.keys(sortedStructure).length > 0 ? sortedStructure : null;
             } catch (e) {
-                console.error('[Bjorn] ❌ Local filesystem scan failed:', e);
+                console.error('[AcidWiki] ❌ Local filesystem scan failed:', e);
                 return null;
             }
         }
@@ -1770,9 +1755,9 @@
                                 content: text.toLowerCase(),
                                 titleLower: (CONFIG.ui.rootReadmeTitle || "Project Home").toLowerCase()
                             });
-                            debugLog("[Bjorn] 🔍 Root README indexed.");
+                            debugLog("[AcidWiki] 🔍 Root README indexed.");
                         })
-                        .catch(e => console.warn("[Bjorn] Failed to index README.md", e))
+                        .catch(e => console.warn("[AcidWiki] Failed to index README.md", e))
                 );
             }
 
@@ -1794,7 +1779,7 @@
                                 titleLower: CONFIG.ui.changelogTitle.toLowerCase(),
                                 isVirtual: true
                             });
-                            debugLog("[Bjorn] 🔍 Changelog indexed.");
+                            debugLog("[AcidWiki] 🔍 Changelog indexed.");
                         })
                         .catch(() => { })
                 );
@@ -2127,10 +2112,7 @@
 
             try {
                 const path = `wiki/docs/${folder}/${filename}`;
-                // C'EST ICI QU'IL FAUT AJOUTER &sha=${STATE.branch}
-                // Cette URL utilise 'commits', 'path' et 'sha'
-                const res = await fetch(`https://api.github.com/repos/${STATE.repo}/commits?path=${path}&sha=${STATE.branch}&page=1&per_page=1`);
-
+                const res = await fetch(`https://api.github.com/repos/${STATE.repo}/commits?path=${path}&page=1&per_page=1`);
                 if (res.ok) {
                     const data = await res.json();
                     if (data.length > 0) {
