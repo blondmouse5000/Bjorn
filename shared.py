@@ -24,7 +24,7 @@ import subprocess
 import threading
 from PIL import Image, ImageFont
 from logger import Logger
-from epd_helper import EPDHelper
+# Defer importing EPD helper until display initialization to avoid hardware access at startup
 
 
 logger = Logger(name="shared.py", level=logging.DEBUG)  # Create a logger object
@@ -221,7 +221,8 @@ class SharedData:
         self.generate_actions_json()
         self.delete_webconsolelog()
         self.initialize_csv()
-        self.initialize_epd_display()
+        # Do NOT initialize the EPD display during general setup on low-memory devices.
+        # Call `initialize_epd_display()` lazily when the display is actually used.
 
     # def initialize_epd_display(self):
     #     """Initialize the e-paper display."""
@@ -254,6 +255,8 @@ class SharedData:
         try:
             logger.info("Initializing EPD display...")
             time.sleep(1)
+            # Import EPDHelper only when actually initializing the display
+            from epd_helper import EPDHelper
             self.epd_helper = EPDHelper(self.config["epd_type"])
             self.epd_helper = EPDHelper(self.epd_type)
             if self.config["epd_type"] == "epd2in7":

@@ -15,7 +15,7 @@
 import threading
 import time
 import os
-import pandas as pd
+# Defer importing pandas to functions that need it to save memory on low-end devices
 import signal
 import glob
 import logging
@@ -53,13 +53,8 @@ class Display:
             }
         }
 
-        try:
-            self.epd_helper = self.shared_data.epd_helper
-            self.epd_helper.init_partial_update()
-            logger.info("Display initialization complete.")
-        except Exception as e:
-            logger.error(f"Error during display initialization: {e}")
-            raise
+        # Do not initialize the EPD helper here; initialize lazily when first used
+        self.epd_helper = None
 
         self.main_image_thread = threading.Thread(target=self.update_main_image)
         self.main_image_thread.daemon = True
@@ -123,10 +118,27 @@ class Display:
             logger.error(f"Error getting open files: {e}")
             return None
 
+    def get_epd_helper(self):
+        """Lazily initialize and return the EPD helper."""
+        try:
+            if getattr(self.shared_data, 'epd_helper', None) is None:
+                try:
+                    self.shared_data.initialize_epd_display()
+                except Exception as e:
+                    logger.error(f"Failed to initialize EPD helper: {e}")
+                    return None
+            return self.shared_data.epd_helper
+        except Exception as e:
+            logger.error(f"Unexpected error getting EPD helper: {e}")
+            return None
+
     def update_vuln_count(self):
         """Update the vulnerability count on the display."""
         with self.semaphore:
             try:
+                # Import pandas only when needed
+                import pandas as pd
+
                 if not os.path.exists(self.shared_data.vuln_summary_file):
                     df = pd.DataFrame(columns=["IP", "Hostname", "MAC Address", "Port", "Vulnerabilities"])
                     df.to_csv(self.shared_data.vuln_summary_file, index=False)
@@ -173,6 +185,9 @@ class Display:
         """Update the shared data with the latest system information."""
         with self.semaphore:
             try:
+                # Import pandas only when reading CSV files
+                import pandas as pd
+
                 with open(self.shared_data.livestatusfile, 'r') as file:
                     livestatus_df = pd.read_csv(file)
                     self.shared_data.portnbr = livestatus_df['Total Open Ports'].iloc[0]
@@ -288,7 +303,12 @@ class Display:
         self.manual_mode_txt = ""
         while not self.shared_data.display_should_exit:
             try:
-                self.epd_helper.init_partial_update()
+                epd = self.get_epd_helper()
+                if epd is None:
+                    # Could not initialize EPD; wait and retry
+                    time.sleep(5)
+                    continue
+                epd.init_partial_update()
                 self.display_comment(self.shared_data.bjornorch_status)
                 image = Image.new('1', (self.shared_data.width, self.shared_data.height))
                 draw = ImageDraw.Draw(image)
@@ -391,8 +411,8 @@ class Display:
                 if self.screen_reversed:
                     image = image.transpose(Image.ROTATE_180)
 
-                self.epd_helper.display_partial(image)
-                self.epd_helper.display_partial(image)
+                epd.display_partial(image)
+                epd.display_partial(image)
 
                 if self.web_screen_reversed:
                     image = image.transpose(Image.ROTATE_180)
