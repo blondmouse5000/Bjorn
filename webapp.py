@@ -205,7 +205,7 @@ class WebThread(threading.Thread):
         """
         while not self.shared_data.webapp_should_exit:
             try:
-                with socketserver.TCPServer(("", self.port), self.handler_class) as httpd:
+                    with socketserver.TCPServer(("127.0.0.1", self.port), self.handler_class) as httpd:
                     self.httpd = httpd
                     logger.info(f"Serving at port {self.port}")
                     while not self.shared_data.webapp_should_exit:
