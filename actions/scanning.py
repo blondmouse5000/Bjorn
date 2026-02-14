@@ -305,7 +305,8 @@ class NetworkScanner:
                 con = s.connect((self.target, port))
                 self.open_ports[self.target].append(port)
                 con.close()
-            except:
+            except (socket.error, OSError):
+                # Port is closed or host unreachable; continue scanning
                 pass
             finally:
                 s.close()  # Ensure the socket is closed

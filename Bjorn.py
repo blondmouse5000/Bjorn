@@ -80,8 +80,8 @@ class Bjorn:
                     with self.shared_data.lock:
                         self.shared_data.orchestrator_should_exit = False
                         self.shared_data.manual_mode = False
-                except Exception:
-                    logger.exception("Failed to set orchestrator flags")
+                except (threading.ThreadError, RuntimeError) as e:
+                    logger.exception(f"Failed to set orchestrator flags: {e}")
                 self.orchestrator = Orchestrator()
                 self.orchestrator_thread = threading.Thread(
                     target=self.orchestrator.run, name='OrchestratorThread', daemon=True)
@@ -97,8 +97,8 @@ class Bjorn:
         try:
             with self.shared_data.lock:
                 self.shared_data.manual_mode = True
-        except Exception:
-            logger.exception("Failed to set manual_mode on stop")
+        except (threading.ThreadError, RuntimeError) as e:
+            logger.exception(f"Failed to set manual_mode on stop: {e}")
         logger.info("Stop button pressed. Manual mode activated & Stopping Orchestrator...")
         if self.orchestrator_thread is not None and self.orchestrator_thread.is_alive():
             logger.info("Stopping Orchestrator thread...")
@@ -134,8 +134,8 @@ class Bjorn:
             logger.warning('nmcli not available on this system')
             self.wifi_connected = False
             return False
-        except Exception:
-            logger.exception('Error while checking Wi-Fi connection')
+        except OSError as e:
+            logger.exception(f'Error while checking Wi-Fi connection: {e}')
             self.wifi_connected = False
             return False
 
@@ -156,8 +156,8 @@ def handle_exit(sig, frame, display_thread, bjorn_thread, web_thread):
             shared_data.orchestrator_should_exit = True  # Ensure orchestrator stops
             shared_data.display_should_exit = True  # Ensure display stops
             shared_data.webapp_should_exit = True  # Ensure web server stops
-    except Exception:
-        logger.exception('Failed to set shutdown flags on shared_data')
+    except (threading.ThreadError, RuntimeError) as e:
+        logger.exception(f'Failed to set shutdown flags on shared_data: {e}')
     handle_exit_display(sig, frame, display_thread)
     # join threads with timeout so shutdown doesn't block indefinitely
     try:
@@ -165,22 +165,22 @@ def handle_exit(sig, frame, display_thread, bjorn_thread, web_thread):
             display_thread.join(timeout=5)
             if display_thread.is_alive():
                 logger.warning('Display thread did not stop within timeout')
-    except Exception:
-        logger.exception('Error joining display thread')
+    except (threading.ThreadError, RuntimeError) as e:
+        logger.exception(f'Error joining display thread: {e}')
     try:
         if bjorn_thread and bjorn_thread.is_alive():
             bjorn_thread.join(timeout=5)
             if bjorn_thread.is_alive():
                 logger.warning('Bjorn main thread did not stop within timeout')
-    except Exception:
-        logger.exception('Error joining bjorn thread')
+    except (threading.ThreadError, RuntimeError) as e:
+        logger.exception(f'Error joining bjorn thread: {e}')
     try:
         if web_thread and web_thread.is_alive():
             web_thread.join(timeout=5)
             if web_thread.is_alive():
                 logger.warning('Web thread did not stop within timeout')
-    except Exception:
-        logger.exception('Error joining web thread')
+    except (threading.ThreadError, RuntimeError) as e:
+        logger.exception(f'Error joining web thread: {e}')
     logger.info("Main loop finished. Clean exit.")
     sys.exit(0)  # Used sys.exit(0) instead of exit(0)
 
@@ -203,8 +203,8 @@ if __name__ == "__main__":
         try:
             with shared_data.lock:
                 shared_data.bjorn_instance = bjorn  # Assigner l'instance de Bjorn à shared_data
-        except Exception:
-            logger.exception('Failed to set bjorn_instance on shared_data')
+        except (threading.ThreadError, RuntimeError) as e:
+            logger.exception(f'Failed to set bjorn_instance on shared_data: {e}')
         bjorn_thread = threading.Thread(target=bjorn.run, name='BjornMainThread', daemon=True)
         bjorn_thread.start()
 
@@ -215,8 +215,8 @@ if __name__ == "__main__":
                     web_thread.name = 'WebThread'
                     web_thread.daemon = True
                     web_thread.start()
-            except Exception:
-                logger.exception('Failed to start web thread')
+            except (threading.ThreadError, RuntimeError, OSError) as e:
+                logger.exception(f'Failed to start web thread: {e}')
 
         signal.signal(
             signal.SIGINT,

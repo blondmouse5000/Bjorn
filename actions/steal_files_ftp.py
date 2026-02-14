@@ -62,7 +62,8 @@ class StealFilesFTP:
                     ftp.cwd(item)
                     files.extend(self.find_files(ftp, os.path.join(dir_path, item)))
                     ftp.cwd('..')
-                except Exception:
+                except (OSError, EOFError) as e:
+                    # Item is likely a file, not a directory; check if matches steal patterns
                     if any(item.endswith(ext) for ext in self.shared_data.steal_file_extensions) or \
                        any(file_name in item for file_name in self.shared_data.steal_file_names):
                         files.append(os.path.join(dir_path, item))

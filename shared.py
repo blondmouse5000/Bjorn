@@ -187,8 +187,8 @@ class SharedData:
                         logger.info(f"Added local MAC address {mac_address} to blacklist")
                     else:
                         logger.info(f"Local MAC address {mac_address} already in blacklist")
-            except Exception:
-                logger.exception('Failed updating mac_scan_blacklist')
+            except (threading.ThreadError, RuntimeError) as e:
+                logger.exception(f'Failed updating mac_scan_blacklist: {e}')
         else:
             logger.warning("Could not add local MAC to blacklist: MAC address not found")
 
@@ -380,8 +380,8 @@ class SharedData:
                 try:
                     with self.lock:
                         self.status_list = list(self.status_list)  # ensure it's a list copy
-                except Exception:
-                    logger.exception('Failed to acquire lock updating status_list')
+                except (threading.ThreadError, RuntimeError) as e:
+                    logger.exception(f'Failed to acquire lock updating status_list: {e}')
                 with open(self.actions_file, 'w') as file:
                     json.dump(actions_config, file, indent=4)
             except IOError as e:
@@ -438,8 +438,8 @@ class SharedData:
                         self.config.update(config)
                         for key, value in self.config.items():
                             setattr(self, key, value)
-                except Exception:
-                    logger.exception('Failed applying loaded configuration')
+                except (threading.ThreadError, RuntimeError, TypeError, ValueError) as e:
+                    logger.exception(f'Failed applying loaded configuration: {e}')
             else:
                 logger.warning("Configuration file not found, creating new one with default values...")
                 self.save_config()
@@ -461,8 +461,8 @@ class SharedData:
                 try:
                     with self.lock:
                         config_snapshot = dict(self.config)
-                except Exception:
-                    logger.exception('Failed to snapshot config; falling back to current config')
+                except (threading.ThreadError, RuntimeError, TypeError) as e:
+                    logger.exception(f'Failed to snapshot config; falling back to current config: {e}')
                     config_snapshot = dict(self.config)
                 with open(self.shared_config_json, 'w') as f:
                     json.dump(config_snapshot, f, indent=4)
@@ -649,7 +649,7 @@ class SharedData:
                         data.append(row)
         except FileNotFoundError:
             logger.warning(f"Netkb file not found: {self.netkbfile}")
-        except Exception:
+        except (FileNotFoundError, json.JSONDecodeError):
             logger.exception('Error reading netkbfile')
         return data
 
@@ -701,8 +701,8 @@ class SharedData:
                     # Write all data
                     for row in mac_to_existing_row.values():
                         writer.writerow(row)
-        except Exception:
-            logger.exception('Error writing netkbfile')
+        except (IOError, OSError, json.JSONDecodeError, csv.Error) as e:
+            logger.exception(f'Error writing netkbfile: {e}')
 
     def update_stats(self):
         """Update the stats based on formulas."""

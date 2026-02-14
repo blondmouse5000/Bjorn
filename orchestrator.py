@@ -108,8 +108,11 @@ class Orchestrator:
             action, ip, row = parent_futures[fut]
             try:
                 success = fut.result()
-            except Exception:
-                logger.exception("Parent action raised an exception")
+            except (concurrent.futures.CancelledError, concurrent.futures.TimeoutError) as e:
+                logger.exception(f"Parent action raised an exception: {e}")
+                success = False
+            except Exception as e:
+                logger.exception(f"Parent action raised an unexpected exception: {e}")
                 success = False
             if success:
                 any_action_executed = True
@@ -128,8 +131,11 @@ class Orchestrator:
                                 action_executed_status = child_action.action_name
                                 self.shared_data.bjornorch_status = action_executed_status
                                 break
-                        except Exception:
-                            logger.exception("Child action raised an exception")
+                        except (concurrent.futures.CancelledError, concurrent.futures.TimeoutError) as e:
+                            logger.exception(f"Child action raised an exception: {e}")
+                            continue
+                        except Exception as e:
+                            logger.exception(f"Child action raised an unexpected exception: {e}")
                             continue
 
         # Also try standalone child actions (if any configured separately)
@@ -146,8 +152,11 @@ class Orchestrator:
                             any_action_executed = True
                             self.shared_data.bjornorch_status = action_executed_status
                             break
-                    except Exception:
-                        logger.exception("Child action execution failed")
+                    except (concurrent.futures.CancelledError, concurrent.futures.TimeoutError) as e:
+                        logger.exception(f"Child action execution failed: {e}")
+                        continue
+                    except Exception as e:
+                        logger.exception(f"Child action execution failed unexpectedly: {e}")
                         continue
 
         return any_action_executed
@@ -221,13 +230,16 @@ class Orchestrator:
             with self.data_lock:
                 self.shared_data.write_data(current_data)
             return result == 'success'
-        except Exception:
-            logger.exception(f"Action {action.action_name} failed")
+        except (IOError, OSError, json.JSONDecodeError, AttributeError, TypeError) as e:
+            logger.exception(f"Action {action.action_name} failed: {e}")
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             row[action_key] = f'failed_{timestamp}'
             with self.data_lock:
                 self.shared_data.write_data(current_data)
             return False
+        except Exception as e:
+            # Catch unexpected exceptions from action execution
+            logger.exception(f"Action {action.action_name} failed unexpectedly: {e}")
 
     def execute_standalone_action(self, action, current_data):
         """Execute a standalone action"""
@@ -300,8 +312,8 @@ class Orchestrator:
             with self.data_lock:
                 self.shared_data.write_data(current_data)
             return result == 'success'
-        except Exception:
-            logger.exception(f"Standalone action {action.action_name} failed")
+        except (IOError, OSError, json.JSONDecodeError, concurrent.futures.CancelledError) as e:
+            logger.exception(f"Standalone action {action.action_name} failed: {e}")
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             row[action_key] = f'failed_{timestamp}'
             with self.data_lock:

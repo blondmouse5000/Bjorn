@@ -177,7 +177,8 @@ class CustomHandler(http.server.SimpleHTTPRequestHandler):
             decoded = base64.b64decode(encoded.strip()).decode('utf-8')
             user, pwd = decoded.split(':', 1)
             return user == self.web_auth_user and pwd == self.web_auth_password
-        except Exception:
+        except (UnicodeDecodeError, ValueError) as e:
+            logger.debug(f"Authentication header decode failed: {e}")
             return False
 
     def request_auth(self):
@@ -205,7 +206,7 @@ class WebThread(threading.Thread):
         """
         while not self.shared_data.webapp_should_exit:
             try:
-                    with socketserver.TCPServer(("127.0.0.1", self.port), self.handler_class) as httpd:
+                with socketserver.TCPServer(("127.0.0.1", self.port), self.handler_class) as httpd:
                     self.httpd = httpd
                     logger.info(f"Serving at port {self.port}")
                     while not self.shared_data.webapp_should_exit:
