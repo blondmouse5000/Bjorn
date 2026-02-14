@@ -18,15 +18,30 @@ jobs:
           python-version: '3.12'
       - name: Upgrade pip and install pip-audit
         run: python -m pip install --upgrade pip pip-audit
-      - name: Run pip-audit and save report
+      - name: Run pip-audit and generate reports
         run: |
-          python -m pip_audit -r requirements.txt -f json > pip-audit.json
+          python -m pip_audit -r requirements.txt -f json > pip-audit.json || true
+          python -m pip_audit -r requirements.txt -f sarif > pip-audit.sarif || true
           cat pip-audit.json
-      - name: Upload pip-audit report
+      - name: Fail if vulnerabilities found
+        run: |
+          python - <<'PY'
+import json,sys
+data=json.load(open('pip-audit.json'))
+fixes=data.get('fixes',[])
+if fixes:
+    print('Vulnerabilities found by pip-audit:')
+    print(json.dumps(fixes, indent=2))
+    sys.exit(1)
+print('No vulnerabilities reported by pip-audit')
+PY
+      - name: Upload pip-audit reports
         uses: actions/upload-artifact@v4
         with:
-          name: pip-audit-report
-          path: pip-audit.json
+          name: pip-audit-reports
+          path: |
+            pip-audit.json
+            pip-audit.sarif
       - name: Generate CycloneDX SBOM
         run: |
           python tools/generate_cyclonedx_sbom.py
@@ -37,6 +52,10 @@ jobs:
           path: |
             sbom/pip-sbom.json
             sbom/cyclonedx-bom.json
+      - name: Upload pip-audit SARIF to Code Scanning
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: pip-audit.sarif
 
   test:
     name: Run tests
