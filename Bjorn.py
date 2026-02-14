@@ -38,8 +38,8 @@ class Bjorn:
         # initialize wifi connected flag
         self.wifi_connected = False
         # ensure a lock exists on shared_data for thread-safe access
-        if not hasattr(self.shared_data, '_lock'):
-            self.shared_data._lock = threading.Lock()
+        if not hasattr(self.shared_data, 'lock'):
+            self.shared_data.lock = threading.Lock()
         self.commentaire_ia = Commentaireia()
         self.orchestrator_thread = None
         self.orchestrator = None
@@ -77,7 +77,7 @@ class Bjorn:
                 logger.info("Starting Orchestrator thread...")
                 # update shared_data under lock
                 try:
-                    with self.shared_data._lock:
+                    with self.shared_data.lock:
                         self.shared_data.orchestrator_should_exit = False
                         self.shared_data.manual_mode = False
                 except Exception:
@@ -94,7 +94,7 @@ class Bjorn:
     def stop_orchestrator(self):
         """Stop the orchestrator thread."""
         try:
-            with self.shared_data._lock:
+            with self.shared_data.lock:
                 self.shared_data.manual_mode = True
         except Exception:
             logger.exception("Failed to set manual_mode on stop")
@@ -149,7 +149,7 @@ class Bjorn:
 def handle_exit(sig, frame, display_thread, bjorn_thread, web_thread):
     """Handles the termination of the main, display, and web threads."""
     try:
-        with shared_data._lock:
+        with shared_data.lock:
             shared_data.should_exit = True
             shared_data.orchestrator_should_exit = True  # Ensure orchestrator stops
             shared_data.display_should_exit = True  # Ensure display stops
@@ -192,7 +192,7 @@ if __name__ == "__main__":
         shared_data.load_config()
 
         logger.info("Starting display thread...")
-        with shared_data._lock:
+        with shared_data.lock:
             shared_data.display_should_exit = False  # Initialize display should_exit
         display_thread = Bjorn.start_display()
 
@@ -200,7 +200,7 @@ if __name__ == "__main__":
         bjorn = Bjorn(shared_data)
         # store instance under lock
         try:
-            with shared_data._lock:
+            with shared_data.lock:
                 shared_data.bjorn_instance = bjorn  # Assigner l'instance de Bjorn à shared_data
         except Exception:
             logger.exception('Failed to set bjorn_instance on shared_data')
