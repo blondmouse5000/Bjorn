@@ -176,14 +176,17 @@ class SharedData:
         """Update the MAC blacklist without immediate save."""
         mac_address = self.get_raspberry_mac()
         if mac_address:
-            if 'mac_scan_blacklist' not in self.config:
-                self.config['mac_scan_blacklist'] = []
-            
-            if mac_address not in self.config['mac_scan_blacklist']:
-                self.config['mac_scan_blacklist'].append(mac_address)
-                logger.info(f"Added local MAC address {mac_address} to blacklist")
-            else:
-                logger.info(f"Local MAC address {mac_address} already in blacklist")
+            try:
+                with self.lock:
+                    if 'mac_scan_blacklist' not in self.config:
+                        self.config['mac_scan_blacklist'] = []
+                    if mac_address not in self.config['mac_scan_blacklist']:
+                        self.config['mac_scan_blacklist'].append(mac_address)
+                        logger.info(f"Added local MAC address {mac_address} to blacklist")
+                    else:
+                        logger.info(f"Local MAC address {mac_address} already in blacklist")
+            except Exception:
+                logger.exception('Failed updating mac_scan_blacklist')
         else:
             logger.warning("Could not add local MAC to blacklist: MAC address not found")
 
@@ -375,6 +378,12 @@ class SharedData:
                         logger.error(f"Unexpected error while processing module {module_name}: {e}")
             
             try:
+                # update shared status list and write actions file under lock
+                try:
+                    with self.lock:
+                        self.status_list = list(self.status_list)  # ensure it's a list copy
+                except Exception:
+                    logger.exception('Failed to acquire lock updating status_list')
                 with open(self.actions_file, 'w') as file:
                     json.dump(actions_config, file, indent=4)
             except IOError as e:
@@ -428,9 +437,13 @@ class SharedData:
             if os.path.exists(self.shared_config_json):
                 with open(self.shared_config_json, 'r') as f:
                     config = json.load(f)
-                    self.config.update(config)
-                    for key, value in self.config.items():
-                        setattr(self, key, value)
+                try:
+                    with self.lock:
+                        self.config.update(config)
+                        for key, value in self.config.items():
+                            setattr(self, key, value)
+                except Exception:
+                    logger.exception('Failed applying loaded configuration')
             else:
                 logger.warning("Configuration file not found, creating new one with default values...")
                 self.save_config()
@@ -448,8 +461,15 @@ class SharedData:
                 os.makedirs(self.configdir)
                 logger.info(f"Created configuration directory at {self.configdir}")
             try:
+                # snapshot config under lock to avoid concurrent mutation while writing
+                try:
+                    with self.lock:
+                        config_snapshot = dict(self.config)
+                except Exception:
+                    logger.exception('Failed to snapshot config; falling back to current config')
+                    config_snapshot = dict(self.config)
                 with open(self.shared_config_json, 'w') as f:
-                    json.dump(self.config, f, indent=4)
+                    json.dump(config_snapshot, f, indent=4)
                 logger.info(f"Configuration saved to {self.shared_config_json}")
             except IOError as e:
                 logger.error(f"Error writing to configuration file: {e}")
@@ -626,58 +646,68 @@ class SharedData:
         """Read data from the CSV file."""
         self.initialize_csv()  # Ensure CSV is initialized with correct headers
         data = []
-        with open(self.netkbfile, 'r') as file:
-            reader = csv.DictReader(file)
-            for row in reader:
-                data.append(row)
+        try:
+            with self.lock:
+                with open(self.netkbfile, 'r') as file:
+                    reader = csv.DictReader(file)
+                    for row in reader:
+                        data.append(row)
+        except FileNotFoundError:
+            logger.warning(f"Netkb file not found: {self.netkbfile}")
+        except Exception:
+            logger.exception('Error reading netkbfile')
         return data
 
     def write_data(self, data):
         """Write data to the CSV file."""
-        with open(self.actions_file, 'r') as file:
-            actions = json.load(file)
-        action_names = [action["b_class"] for action in actions if "b_class" in action]
+        try:
+            with self.lock:
+                with open(self.actions_file, 'r') as file:
+                    actions = json.load(file)
+                action_names = [action["b_class"] for action in actions if "b_class" in action]
 
-        # Read existing CSV file if it exists
-        if os.path.exists(self.netkbfile):
-            with open(self.netkbfile, 'r') as file:
-                reader = csv.DictReader(file)
-                existing_headers = reader.fieldnames
-                existing_data = list(reader)
-        else:
-            existing_headers = []
-            existing_data = []
+                # Read existing CSV file if it exists
+                if os.path.exists(self.netkbfile):
+                    with open(self.netkbfile, 'r') as file:
+                        reader = csv.DictReader(file)
+                        existing_headers = reader.fieldnames or []
+                        existing_data = list(reader)
+                else:
+                    existing_headers = []
+                    existing_data = []
 
-        # Check for missing action columns and add them
-        new_headers = ["MAC Address", "IPs", "Hostnames", "Alive", "Ports"] + action_names
-        missing_headers = [header for header in new_headers if header not in existing_headers]
+                # Check for missing action columns and add them
+                new_headers = ["MAC Address", "IPs", "Hostnames", "Alive", "Ports"] + action_names
+                missing_headers = [header for header in new_headers if header not in existing_headers]
 
-        # Update headers
-        headers = existing_headers + missing_headers
+                # Update headers
+                headers = existing_headers + missing_headers
 
-        # Merge new data with existing data
-        mac_to_existing_row = {row["MAC Address"]: row for row in existing_data}
+                # Merge new data with existing data
+                mac_to_existing_row = {row["MAC Address"]: row for row in existing_data}
 
-        for new_row in data:
-            mac_address = new_row["MAC Address"]
-            if mac_address in mac_to_existing_row:
-                # Update the existing row with new data
-                existing_row = mac_to_existing_row[mac_address]
-                for key, value in new_row.items():
-                    if value:
-                        existing_row[key] = value
-            else:
-                # Add new row
-                mac_to_existing_row[mac_address] = new_row
+                for new_row in data:
+                    mac_address = new_row["MAC Address"]
+                    if mac_address in mac_to_existing_row:
+                        # Update the existing row with new data
+                        existing_row = mac_to_existing_row[mac_address]
+                        for key, value in new_row.items():
+                            if value:
+                                existing_row[key] = value
+                    else:
+                        # Add new row
+                        mac_to_existing_row[mac_address] = new_row
 
-        # Write updated data back to CSV
-        with open(self.netkbfile, 'w', newline='') as file:
-            writer = csv.DictWriter(file, fieldnames=headers)
-            writer.writeheader()
+                # Write updated data back to CSV
+                with open(self.netkbfile, 'w', newline='') as file:
+                    writer = csv.DictWriter(file, fieldnames=headers)
+                    writer.writeheader()
 
-            # Write all data
-            for row in mac_to_existing_row.values():
-                writer.writerow(row)
+                    # Write all data
+                    for row in mac_to_existing_row.values():
+                        writer.writerow(row)
+        except Exception:
+            logger.exception('Error writing netkbfile')
 
     def update_stats(self):
         """Update the stats based on formulas."""
