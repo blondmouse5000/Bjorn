@@ -20,6 +20,7 @@ import time
 import logging
 import sys
 import threading
+import concurrent.futures
 from datetime import datetime, timedelta
 from actions.nmap_vuln_scanner import NmapVulnScanner
 from init_shared import shared_data
@@ -39,7 +40,10 @@ class Orchestrator:
         self.load_actions()  # Load all actions from the actions file
         actions_loaded = [action.__class__.__name__ for action in self.actions + self.standalone_actions]  # Get the names of the loaded actions
         logger.info(f"Actions loaded: {actions_loaded}")
-        self.semaphore = threading.Semaphore(10)  # Limit the number of active threads to 10
+        # Concurrency primitives
+        max_workers = getattr(self.shared_data, 'max_workers', 10) or 10
+        self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=max_workers)
+        self.data_lock = threading.Lock()
 
     def load_actions(self):
         """Load all actions from the actions file"""
@@ -85,47 +89,70 @@ class Orchestrator:
         """Process all IPs with alive status set to 1"""
         any_action_executed = False
         action_executed_status = None
-
+        # Submit parent actions for all alive hosts, collect futures to handle children when parents finish
+        parent_futures = {}
         for action in self.actions:
             for row in current_data:
-                if row["Alive"] != '1':
+                if row.get("Alive") != '1':
                     continue
-                ip, ports = row["IPs"], row["Ports"].split(';')
+                ip, ports = row.get("IPs"), row.get("Ports", "").split(';')
                 action_key = action.action_name
-
                 if action.b_parent_action is None:
-                    with self.semaphore:
-                        if self.execute_action(action, ip, ports, row, action_key, current_data):
-                            action_executed_status = action_key
-                            any_action_executed = True
-                            self.shared_data.bjornorch_status = action_executed_status
+                    future = self.executor.submit(self.execute_action, action, ip, ports, row, action_key, current_data)
+                    parent_futures[future] = (action, ip, row)
 
-                            for child_action in self.actions:
-                                if child_action.b_parent_action == action_key:
-                                    with self.semaphore:
-                                        if self.execute_action(child_action, ip, ports, row, child_action.action_name, current_data):
-                                            action_executed_status = child_action.action_name
-                                            self.shared_data.bjornorch_status = action_executed_status
-                                            break
-                            break
+        # Process completed parent actions and schedule child actions when parents succeed
+        for fut in concurrent.futures.as_completed(parent_futures):
+            action, ip, row = parent_futures[fut]
+            try:
+                success = fut.result()
+            except Exception:
+                logger.exception("Parent action raised an exception")
+                success = False
+            if success:
+                any_action_executed = True
+                action_executed_status = action.action_name
+                self.shared_data.bjornorch_status = action_executed_status
+                # schedule child actions for this ip
+                for child_action in self.actions:
+                    if child_action.b_parent_action == action.action_name:
+                        ports = row.get("Ports", "").split(';')
+                        child_future = self.executor.submit(self.execute_action, child_action, ip, ports, row, child_action.action_name, current_data)
+                        try:
+                            child_success = child_future.result()
+                            if child_success:
+                                any_action_executed = True
+                                action_executed_status = child_action.action_name
+                                self.shared_data.bjornorch_status = action_executed_status
+                                break
+                        except Exception:
+                            logger.exception("Child action raised an exception")
+                            continue
 
+        # Also try standalone child actions (if any configured separately)
         for child_action in self.actions:
             if child_action.b_parent_action:
                 action_key = child_action.action_name
                 for row in current_data:
-                    ip, ports = row["IPs"], row["Ports"].split(';')
-                    with self.semaphore:
-                        if self.execute_action(child_action, ip, ports, row, action_key, current_data):
+                    ip, ports = row.get("IPs"), row.get("Ports", "").split(';')
+                    future = self.executor.submit(self.execute_action, child_action, ip, ports, row, action_key, current_data)
+                    try:
+                        if future.result():
                             action_executed_status = child_action.action_name
                             any_action_executed = True
                             self.shared_data.bjornorch_status = action_executed_status
                             break
+                    except Exception:
+                        logger.exception("Child action execution failed")
+                        continue
 
         return any_action_executed
 
 
     def execute_action(self, action, ip, ports, row, action_key, current_data):
         """Execute an action on a target"""
+        # Ensure keys exist
+        row.setdefault(action_key, "")
         if hasattr(action, 'port') and str(action.port) not in ports:
             return False
 
@@ -148,7 +175,7 @@ class Orchestrator:
                         logger.warning(f"Skipping action {action.action_name} for {ip}:{action.port} due to success retry delay, retry possible in: {formatted_retry_in}")
                         return False  # Skip if the success retry delay has not passed
                 except ValueError as ve:
-                    logger.error(f"Error parsing last success time for {action.action_name}: {ve}")
+                    logger.exception(f"Error parsing last success time for {action.action_name}: {ve}")
 
         last_failed_time_str = row.get(action_key, "")
         if 'failed' in last_failed_time_str:
@@ -160,7 +187,7 @@ class Orchestrator:
                     logger.warning(f"Skipping action {action.action_name} for {ip}:{action.port} due to failed retry delay, retry possible in: {formatted_retry_in}")
                     return False  # Skip if the retry delay has not passed
             except ValueError as ve:
-                logger.error(f"Error parsing last failed time for {action.action_name}: {ve}")
+                logger.exception(f"Error parsing last failed time for {action.action_name}: {ve}")
 
         try:
             logger.info(f"Executing action {action.action_name} for {ip}:{action.port}")
@@ -171,13 +198,16 @@ class Orchestrator:
                 row[action_key] = f'success_{timestamp}'
             else:
                 row[action_key] = f'failed_{timestamp}'
-            self.shared_data.write_data(current_data)
+            # protect writes with a lock to avoid concurrent write corruption
+            with self.data_lock:
+                self.shared_data.write_data(current_data)
             return result == 'success'
-        except Exception as e:
-            logger.error(f"Action {action.action_name} failed: {e}")
+        except Exception:
+            logger.exception(f"Action {action.action_name} failed")
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             row[action_key] = f'failed_{timestamp}'
-            self.shared_data.write_data(current_data)
+            with self.data_lock:
+                self.shared_data.write_data(current_data)
             return False
 
     def execute_standalone_action(self, action, current_data):
@@ -234,13 +264,15 @@ class Orchestrator:
             else:
                 row[action_key] = f'failed_{timestamp}'
                 logger.error(f"Standalone action {action.action_name} failed")
-            self.shared_data.write_data(current_data)
+            with self.data_lock:
+                self.shared_data.write_data(current_data)
             return result == 'success'
-        except Exception as e:
-            logger.error(f"Standalone action {action.action_name} failed: {e}")
+        except Exception:
+            logger.exception(f"Standalone action {action.action_name} failed")
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             row[action_key] = f'failed_{timestamp}'
-            self.shared_data.write_data(current_data)
+            with self.data_lock:
+                self.shared_data.write_data(current_data)
             return False
 
     def run(self):
