@@ -21,6 +21,7 @@ import time
 import csv
 import logging
 import subprocess
+import threading
 from PIL import Image, ImageFont 
 from logger import Logger
 from epd_helper import EPDHelper
@@ -32,6 +33,8 @@ class SharedData:
     """Shared data between the different modules."""
     def __init__(self):
         self.initialize_paths() # Initialize the paths used by the application
+        # lock for coordinating access to shared data across threads
+        self.lock = threading.Lock()
         self.status_list = [] 
         self.last_comment_time = time.time() # Last time a comment was displayed
         self.default_config = self.get_default_config() # Default configuration of the application  
