@@ -145,18 +145,26 @@ class WebUtils:
 
     def serve_logs(self, handler):
         try:
-            log_file_path = self.shared_data.webconsolelog
-            if not os.path.exists(log_file_path):
-                subprocess.Popen(f"sudo tail -f /home/bjorn/Bjorn/data/logs/* > {log_file_path}", shell=True)
+            log_dir = self.shared_data.logsdir
+            log_lines = []
 
-            with open(log_file_path, 'r') as log_file:
-                log_lines = log_file.readlines()
+            # Aggregate logs from all log files in directory (safe, no shell)
+            try:
+                for log_file_name in sorted(os.listdir(log_dir)):
+                    log_file_path = os.path.join(log_dir, log_file_name)
+                    if os.path.isfile(log_file_path) and log_file_path.endswith('.log'):
+                        try:
+                            with open(log_file_path, 'r') as lf:
+                                log_lines.extend(lf.readlines())
+                        except (IOError, OSError) as e:
+                            self.logger.warning(f"Could not read {log_file_path}: {e}")
+            except (IOError, OSError) as e:
+                self.logger.warning(f"Could not read logs directory {log_dir}: {e}")
 
+            # Keep only last 2000 lines to prevent memory bloat
             max_lines = 2000
             if len(log_lines) > max_lines:
                 log_lines = log_lines[-max_lines:]
-                with open(log_file_path, 'w') as log_file:
-                    log_file.writelines(log_lines)
 
             log_data = ''.join(log_lines)
 
@@ -464,16 +472,16 @@ class WebUtils:
             password = params['password']
 
             self.update_nmconnection(ssid, password)
-            command = f'sudo nmcli connection up "preconfigured"'
-            connect_result = subprocess.Popen(
-                command,
-                shell=True,
+            # Use list-based subprocess call instead of shell=True
+            connect_result = subprocess.run(
+                ['sudo', 'nmcli', 'connection', 'up', 'preconfigured'],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                text=True)
-            stdout, stderr = connect_result.communicate()
+                text=True,
+                timeout=30)
+            stdout, stderr = connect_result.stdout, connect_result.stderr
             if connect_result.returncode != 0:
-                raise Exception(stderr)
+                raise Exception(stderr or 'Failed to connect to WiFi')
 
             self.shared_data.wifichanged = True
 
@@ -490,22 +498,25 @@ class WebUtils:
 
     def disconnect_and_clear_wifi(self, handler):
         try:
-            command_disconnect = 'sudo nmcli connection down "preconfigured"'
-            disconnect_result = subprocess.Popen(
-                command_disconnect,
-                shell=True,
+            # Use list-based subprocess call instead of shell=True
+            disconnect_result = subprocess.run(
+                ['sudo', 'nmcli', 'connection', 'down', 'preconfigured'],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                text=True)
-            stdout, stderr = disconnect_result.communicate()
-            if disconnect_result.returncode != 0:
-                raise Exception(stderr)
+                text=True,
+                timeout=30)
+            if disconnect_result.returncode != 0 and 'not activated' not in disconnect_result.stderr:
+                raise Exception(disconnect_result.stderr or 'Failed to disconnect')
 
             config_path = '/etc/NetworkManager/system-connections/preconfigured.nmconnection'
-            with open(config_path, 'w') as f:
-                f.write("")
-            subprocess.Popen(['sudo', 'chmod', '600', config_path]).communicate()
-            subprocess.Popen(['sudo', 'nmcli', 'connection', 'reload']).communicate()
+            try:
+                with open(config_path, 'w') as f:
+                    f.write("")
+                # Safe chmod via subprocess
+                subprocess.run(['sudo', 'chmod', '600', config_path], timeout=10, check=False)
+                subprocess.run(['sudo', 'nmcli', 'connection', 'reload'], timeout=10, check=False)
+            except (IOError, OSError) as e:
+                self.logger.warning(f"Could not clear WiFi config: {e}")
 
             self.shared_data.wifichanged = False
 
@@ -523,52 +534,92 @@ class WebUtils:
 
     def clear_files(self, handler):
         try:
-            command = """
-            sudo rm -rf config/*.json && sudo rm -rf data/*.csv && sudo rm -rf data/*.log  && sudo rm -rf backup/backups/* && sudo rm -rf backup/uploads/* && sudo rm -rf data/output/data_stolen/* && sudo rm -rf data/output/crackedpwd/* && sudo rm -rf config/* && sudo rm -rf data/output/scan_results/* && sudo rm -rf __pycache__ && sudo rm -rf config/__pycache__ && sudo rm -rf data/__pycache__  && sudo rm -rf actions/__pycache__  && sudo rm -rf resources/__pycache__ && sudo rm -rf web/__pycache__ && sudo rm -rf *.log && sudo rm -rf resources/waveshare_epd/__pycache__ && sudo rm -rf data/logs/*  && sudo rm -rf data/output/vulnerabilities/* && sudo rm -rf data/logs/*
-            """
-            result = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-            stdout, stderr = result.communicate()
-
-            if result.returncode == 0:
-                handler.send_response(200)
-                handler.send_header("Content-type", "application/json")
-                handler.end_headers()
-                handler.wfile.write(json.dumps({"status": "success",
-                                                "message": "Files cleared successfully"}).encode('utf-8'))
-            else:
-                handler.send_response(500)
-                handler.send_header("Content-type", "application/json")
-                handler.end_headers()
-                handler.wfile.write(json.dumps({"status": "error", "message": stderr}).encode('utf-8'))
+            import shutil
+            errors = []
+            # Dirs to clear (config configs + data output)
+            clear_patterns = [
+                (self.shared_data.configdir, ['*.json', '*.py']),
+                (self.shared_data.datadir, ['*.csv', '*.log']),
+                (self.shared_data.backupdir, []),
+                (self.shared_data.upload_dir, []),
+                (self.shared_data.datastolendir, []),
+                (self.shared_data.crackedpwddir, []),
+                (self.shared_data.scan_results_dir, []),
+                (self.shared_data.vulnerabilities_dir, []),
+            ]
+            # Recursively remove __pycache__ directories
+            for root, dirs, files in os.walk(self.shared_data.currentdir):
+                if '__pycache__' in dirs:
+                    pycache_path = os.path.join(root, '__pycache__')
+                    try:
+                        shutil.rmtree(pycache_path)
+                    except (IOError, OSError) as e:
+                        errors.append(f"Could not remove {pycache_path}: {e}")
+            # Clear directories using Python (safe, no shell)
+            for dir_path, patterns in clear_patterns:
+                if os.path.isdir(dir_path):
+                    try:
+                        # Remove subdirs recursively
+                        for item in os.listdir(dir_path):
+                            item_path = os.path.join(dir_path, item)
+                            if os.path.isdir(item_path):
+                                shutil.rmtree(item_path, ignore_errors=True)
+                            elif not patterns or any(item.endswith(p.replace('*', '')) for p in patterns):
+                                try:
+                                    os.remove(item_path)
+                                except (IOError, OSError) as e:
+                                    errors.append(f"Could not remove {item_path}: {e}")
+                    except (IOError, OSError) as e:
+                        errors.append(f"Could not clear {dir_path}: {e}")
+            handler.send_response(200)
+            handler.send_header("Content-type", "application/json")
+            handler.end_headers()
+            msg = "Files cleared successfully"
+            if errors:
+                msg += f" (with {len(errors)} warnings)"
+            handler.wfile.write(json.dumps({"status": "success", "message": msg}).encode('utf-8'))
         except Exception as e:
             handler.send_response(500)
             handler.send_header("Content-type", "application/json")
             handler.end_headers()
+            self.logger.exception("Error clearing files")
             handler.wfile.write(json.dumps({"status": "error", "message": str(e)}).encode('utf-8'))
 
     def clear_files_light(self, handler):
         try:
-            command = """
-            sudo rm -rf data/*.log && sudo rm -rf data/output/data_stolen/* && sudo rm -rf data/output/crackedpwd/*  && sudo rm -rf data/output/scan_results/* && sudo rm -rf __pycache__ && sudo rm -rf config/__pycache__ && sudo rm -rf data/__pycache__  && sudo rm -rf actions/__pycache__  && sudo rm -rf resources/__pycache__ && sudo rm -rf web/__pycache__ && sudo rm -rf *.log && sudo rm -rf resources/waveshare_epd/__pycache__ && sudo rm -rf data/logs/*  && sudo rm -rf data/output/vulnerabilities/* && sudo rm -rf data/logs/*
-            """
-            result = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-            stdout, stderr = result.communicate()
-
-            if result.returncode == 0:
-                handler.send_response(200)
-                handler.send_header("Content-type", "application/json")
-                handler.end_headers()
-                handler.wfile.write(json.dumps({"status": "success",
-                                                "message": "Files cleared successfully"}).encode('utf-8'))
-            else:
-                handler.send_response(500)
-                handler.send_header("Content-type", "application/json")
-                handler.end_headers()
-                handler.wfile.write(json.dumps({"status": "error", "message": stderr}).encode('utf-8'))
+            import shutil
+            errors = []
+            # Light clear: only logs and output dirs (safe, no shell)
+            light_dirs = [
+                self.shared_data.logsdir,
+                self.shared_data.datastolendir,
+                self.shared_data.crackedpwddir,
+                self.shared_data.scan_results_dir,
+                self.shared_data.vulnerabilities_dir,
+            ]
+            for dir_path in light_dirs:
+                if os.path.isdir(dir_path):
+                    try:
+                        for item in os.listdir(dir_path):
+                            item_path = os.path.join(dir_path, item)
+                            if os.path.isdir(item_path):
+                                shutil.rmtree(item_path, ignore_errors=True)
+                            elif item.endswith(('.log', '.csv')):
+                                os.remove(item_path)
+                    except (IOError, OSError) as e:
+                        errors.append(f"Could not clear {dir_path}: {e}")
+            handler.send_response(200)
+            handler.send_header("Content-type", "application/json")
+            handler.end_headers()
+            msg = "Output files cleared successfully"
+            if errors:
+                msg += f" (with {len(errors)} warnings)"
+            handler.wfile.write(json.dumps({"status": "success", "message": msg}).encode('utf-8'))
         except Exception as e:
             handler.send_response(500)
             handler.send_header("Content-type", "application/json")
             handler.end_headers()
+            self.logger.exception("Error clearing output files")
             handler.wfile.write(json.dumps({"status": "error", "message": str(e)}).encode('utf-8'))
 
     def initialize_csv(self, handler):
@@ -589,45 +640,57 @@ class WebUtils:
 
     def reboot_system(self, handler):
         try:
-            command = "sudo reboot"
-            subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            # Safe subprocess call without shell=True
+            subprocess.Popen(
+                ['sudo', 'systemctl', 'reboot'],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE)
             handler.send_response(200)
             handler.send_header("Content-type", "application/json")
             handler.end_headers()
             handler.wfile.write(json.dumps({"status": "success", "message": "System is rebooting"}).encode('utf-8'))
-        except subprocess.CalledProcessError as e:
+        except (OSError, subprocess.SubprocessError) as e:
             handler.send_response(500)
             handler.send_header("Content-type", "application/json")
             handler.end_headers()
+            self.logger.error(f"Reboot failed: {e}")
             handler.wfile.write(json.dumps({"status": "error", "message": str(e)}).encode('utf-8'))
 
     def shutdown_system(self, handler):
         try:
-            command = "sudo shutdown now"
-            subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            # Safe subprocess call without shell=True
+            subprocess.Popen(
+                ['sudo', 'systemctl', 'poweroff'],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE)
             handler.send_response(200)
             handler.send_header("Content-type", "application/json")
             handler.end_headers()
             handler.wfile.write(json.dumps({"status": "success", "message": "System is shutting down"}).encode('utf-8'))
-        except subprocess.CalledProcessError as e:
+        except (OSError, subprocess.SubprocessError) as e:
             handler.send_response(500)
             handler.send_header("Content-type", "application/json")
             handler.end_headers()
+            self.logger.error(f"Shutdown failed: {e}")
             handler.wfile.write(json.dumps({"status": "error", "message": str(e)}).encode('utf-8'))
 
     def restart_bjorn_service(self, handler):
         try:
-            command = "sudo systemctl restart bjorn.service"
-            subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            # Safe subprocess call without shell=True
+            subprocess.Popen(
+                ['sudo', 'systemctl', 'restart', 'bjorn.service'],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE)
             handler.send_response(200)
             handler.send_header("Content-type", "application/json")
             handler.end_headers()
             handler.wfile.write(json.dumps({"status": "success",
                                             "message": "Bjorn service restarted successfully"}).encode('utf-8'))
-        except subprocess.CalledProcessError as e:
+        except (OSError, subprocess.SubprocessError) as e:
             handler.send_response(500)
             handler.send_header("Content-type", "application/json")
             handler.end_headers()
+            self.logger.error(f"Service restart failed: {e}")
             handler.wfile.write(json.dumps({"status": "error", "message": str(e)}).encode('utf-8'))
 
     def serve_network_data(self, handler):
@@ -727,8 +790,12 @@ method=auto
 [ipv6]
 method=auto
 """)
-        subprocess.Popen(['sudo', 'chmod', '600', config_path]).communicate()
-        subprocess.Popen(['sudo', 'nmcli', 'connection', 'reload']).communicate()
+        # Set permissions on config file safely (without shell=True)
+        try:
+            subprocess.run(['sudo', 'chmod', '600', config_path], timeout=10, check=False)
+            subprocess.run(['sudo', 'nmcli', 'connection', 'reload'], timeout=10, check=False)
+        except (OSError, subprocess.TimeoutExpired) as e:
+            self.logger.warning(f"Could not reload nmcli connection: {e}")
 
     def save_configuration(self, handler):
         try:
