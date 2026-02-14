@@ -16,6 +16,7 @@
 
 
 import threading
+import shutil
 import signal
 import logging
 import time
@@ -34,6 +35,11 @@ class Bjorn:
     """Main class for Bjorn. Manages the primary operations of the application."""
     def __init__(self, shared_data):
         self.shared_data = shared_data
+        # initialize wifi connected flag
+        self.wifi_connected = False
+        # ensure a lock exists on shared_data for thread-safe access
+        if not hasattr(self.shared_data, '_lock'):
+            self.shared_data._lock = threading.Lock()
         self.commentaire_ia = Commentaireia()
         self.orchestrator_thread = None
         self.orchestrator = None
@@ -69,10 +75,15 @@ class Bjorn:
         if self.wifi_connected:  # Check if Wi-Fi is connected before starting the orchestrator
             if self.orchestrator_thread is None or not self.orchestrator_thread.is_alive():
                 logger.info("Starting Orchestrator thread...")
-                self.shared_data.orchestrator_should_exit = False
-                self.shared_data.manual_mode = False
+                # update shared_data under lock
+                try:
+                    with self.shared_data._lock:
+                        self.shared_data.orchestrator_should_exit = False
+                        self.shared_data.manual_mode = False
+                except Exception:
+                    logger.exception("Failed to set orchestrator flags")
                 self.orchestrator = Orchestrator()
-                self.orchestrator_thread = threading.Thread(target=self.orchestrator.run)
+                self.orchestrator_thread = threading.Thread(target=self.orchestrator.run, name='OrchestratorThread', daemon=True)
                 self.orchestrator_thread.start()
                 logger.info("Orchestrator thread started, automatic mode activated.")
             else:
@@ -82,12 +93,18 @@ class Bjorn:
 
     def stop_orchestrator(self):
         """Stop the orchestrator thread."""
-        self.shared_data.manual_mode = True
+        try:
+            with self.shared_data._lock:
+                self.shared_data.manual_mode = True
+        except Exception:
+            logger.exception("Failed to set manual_mode on stop")
         logger.info("Stop button pressed. Manual mode activated & Stopping Orchestrator...")
         if self.orchestrator_thread is not None and self.orchestrator_thread.is_alive():
             logger.info("Stopping Orchestrator thread...")
             self.shared_data.orchestrator_should_exit = True
-            self.orchestrator_thread.join()
+            self.orchestrator_thread.join(timeout=5)
+            if self.orchestrator_thread.is_alive():
+                logger.warning("Orchestrator thread did not stop within timeout")
             logger.info("Orchestrator thread stopped.")
             self.shared_data.bjornorch_status = "IDLE"
             self.shared_data.bjornstatustext2 = ""
@@ -97,32 +114,71 @@ class Bjorn:
 
     def is_wifi_connected(self):
         """Checks for Wi-Fi connectivity using the nmcli command."""
-        result = subprocess.Popen(['nmcli', '-t', '-f', 'active', 'dev', 'wifi'], stdout=subprocess.PIPE, text=True).communicate()[0]
-        self.wifi_connected = 'yes' in result
-        return self.wifi_connected
+        # Verify nmcli exists
+        if not shutil.which('nmcli'):
+            logger.warning('nmcli not found; assuming Wi-Fi not connected')
+            self.wifi_connected = False
+            return False
+        try:
+            completed = subprocess.run(['nmcli', '-t', '-f', 'active', 'dev', 'wifi'], capture_output=True, text=True, timeout=5)
+            output = (completed.stdout or "").lower()
+            self.wifi_connected = 'yes' in output
+            return self.wifi_connected
+        except subprocess.TimeoutExpired:
+            logger.warning('nmcli timed out when checking Wi-Fi status')
+            self.wifi_connected = False
+            return False
+        except FileNotFoundError:
+            logger.warning('nmcli not available on this system')
+            self.wifi_connected = False
+            return False
+        except Exception:
+            logger.exception('Error while checking Wi-Fi connection')
+            self.wifi_connected = False
+            return False
 
     
     @staticmethod
     def start_display():
         """Start the display thread"""
         display = Display(shared_data)
-        display_thread = threading.Thread(target=display.run)
+        display_thread = threading.Thread(target=display.run, name='DisplayThread', daemon=True)
         display_thread.start()
         return display_thread
 
 def handle_exit(sig, frame, display_thread, bjorn_thread, web_thread):
     """Handles the termination of the main, display, and web threads."""
-    shared_data.should_exit = True
-    shared_data.orchestrator_should_exit = True  # Ensure orchestrator stops
-    shared_data.display_should_exit = True  # Ensure display stops
-    shared_data.webapp_should_exit = True  # Ensure web server stops
+    try:
+        with shared_data._lock:
+            shared_data.should_exit = True
+            shared_data.orchestrator_should_exit = True  # Ensure orchestrator stops
+            shared_data.display_should_exit = True  # Ensure display stops
+            shared_data.webapp_should_exit = True  # Ensure web server stops
+    except Exception:
+        logger.exception('Failed to set shutdown flags on shared_data')
     handle_exit_display(sig, frame, display_thread)
-    if display_thread.is_alive():
-        display_thread.join()
-    if bjorn_thread.is_alive():
-        bjorn_thread.join()
-    if web_thread.is_alive():
-        web_thread.join()
+    # join threads with timeout so shutdown doesn't block indefinitely
+    try:
+        if display_thread and display_thread.is_alive():
+            display_thread.join(timeout=5)
+            if display_thread.is_alive():
+                logger.warning('Display thread did not stop within timeout')
+    except Exception:
+        logger.exception('Error joining display thread')
+    try:
+        if bjorn_thread and bjorn_thread.is_alive():
+            bjorn_thread.join(timeout=5)
+            if bjorn_thread.is_alive():
+                logger.warning('Bjorn main thread did not stop within timeout')
+    except Exception:
+        logger.exception('Error joining bjorn thread')
+    try:
+        if web_thread and web_thread.is_alive():
+            web_thread.join(timeout=5)
+            if web_thread.is_alive():
+                logger.warning('Web thread did not stop within timeout')
+    except Exception:
+        logger.exception('Error joining web thread')
     logger.info("Main loop finished. Clean exit.")
     sys.exit(0)  # Used sys.exit(0) instead of exit(0)
 
@@ -136,18 +192,30 @@ if __name__ == "__main__":
         shared_data.load_config()
 
         logger.info("Starting display thread...")
-        shared_data.display_should_exit = False  # Initialize display should_exit
+        with shared_data._lock:
+            shared_data.display_should_exit = False  # Initialize display should_exit
         display_thread = Bjorn.start_display()
 
         logger.info("Starting Bjorn thread...")
         bjorn = Bjorn(shared_data)
-        shared_data.bjorn_instance = bjorn  # Assigner l'instance de Bjorn à shared_data
-        bjorn_thread = threading.Thread(target=bjorn.run)
+        # store instance under lock
+        try:
+            with shared_data._lock:
+                shared_data.bjorn_instance = bjorn  # Assigner l'instance de Bjorn à shared_data
+        except Exception:
+            logger.exception('Failed to set bjorn_instance on shared_data')
+        bjorn_thread = threading.Thread(target=bjorn.run, name='BjornMainThread', daemon=True)
         bjorn_thread.start()
 
-        if shared_data.config["websrv"]:
+        if shared_data.config.get("websrv"):
             logger.info("Starting the web server...")
-            web_thread.start()
+            try:
+                if web_thread:
+                    web_thread.name = 'WebThread'
+                    web_thread.daemon = True
+                    web_thread.start()
+            except Exception:
+                logger.exception('Failed to start web thread')
 
         signal.signal(signal.SIGINT, lambda sig, frame: handle_exit(sig, frame, display_thread, bjorn_thread, web_thread))
         signal.signal(signal.SIGTERM, lambda sig, frame: handle_exit(sig, frame, display_thread, bjorn_thread, web_thread))
