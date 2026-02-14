@@ -1,9 +1,9 @@
-#shared.py
+# shared.py
 # Description:
 # This file, shared.py, is a core component responsible for managing shared resources and data for different modules in the Bjorn project.
-# It handles the initialization and configuration of paths, logging, fonts, and images. Additionally, it sets up the environment, 
+# It handles the initialization and configuration of paths, logging, fonts, and images. Additionally, it sets up the environment,
 # creates necessary directories and files, and manages the loading and saving of configuration settings.
-# 
+#
 # Key functionalities include:
 # - Initializing various paths used by the application, including directories for configuration, data, actions, web resources, and logs.
 # - Setting up the environment, including the e-paper display, network knowledge base, and actions JSON configuration.
@@ -22,33 +22,35 @@ import csv
 import logging
 import subprocess
 import threading
-from PIL import Image, ImageFont 
+from PIL import Image, ImageFont
 from logger import Logger
 from epd_helper import EPDHelper
 
 
-logger = Logger(name="shared.py", level=logging.DEBUG) # Create a logger object 
+logger = Logger(name="shared.py", level=logging.DEBUG)  # Create a logger object
+
 
 class SharedData:
     """Shared data between the different modules."""
+
     def __init__(self):
-        self.initialize_paths() # Initialize the paths used by the application
+        self.initialize_paths()  # Initialize the paths used by the application
         # lock for coordinating access to shared data across threads
         self.lock = threading.Lock()
-        self.status_list = [] 
-        self.last_comment_time = time.time() # Last time a comment was displayed
-        self.default_config = self.get_default_config() # Default configuration of the application  
-        self.config = self.default_config.copy() # Configuration of the application
+        self.status_list = []
+        self.last_comment_time = time.time()  # Last time a comment was displayed
+        self.default_config = self.get_default_config()  # Default configuration of the application
+        self.config = self.default_config.copy()  # Configuration of the application
         # Load existing configuration first
         self.load_config()
 
         # Update MAC blacklist without immediate save
         self.update_mac_blacklist()
-        self.setup_environment() # Setup the environment
-        self.initialize_variables() # Initialize the variables used by the application
-        self.create_livestatusfile() 
-        self.load_fonts() # Load the fonts used by the application
-        self.load_images() # Load the images used by the application
+        self.setup_environment()  # Setup the environment
+        self.initialize_variables()  # Initialize the variables used by the application
+        self.create_livestatusfile()
+        self.load_fonts()  # Load the fonts used by the application
+        self.load_images()  # Load the images used by the application
         # self.create_initial_image() # Create the initial image displayed on the screen
 
     def initialize_paths(self):
@@ -107,7 +109,7 @@ class SharedData:
         self.ftpfile = os.path.join(self.crackedpwddir, "ftp.csv")
         self.sqlfile = os.path.join(self.crackedpwddir, "sql.csv")
         self.rdpfile = os.path.join(self.crackedpwddir, "rdp.csv")
-        #Files directly under logsdir
+        # Files directly under logsdir
         self.webconsolelog = os.path.join(self.logsdir, 'temp_log.txt')
 
     def get_default_config(self):
@@ -130,7 +132,7 @@ class SharedData:
             "log_warning": True,
             "log_error": True,
             "log_critical": True,
-            
+
             "startup_delay": 10,
             "web_delay": 2,
             "screen_delay": 1,
@@ -145,24 +147,24 @@ class SharedData:
             "web_user": "bjorn",
             "web_password": "",  # set a strong password after install
             "failed_retry_delay": 600,
-            "success_retry_delay": 900, 
-            "ref_width" :122 ,
-            "ref_height" : 250,
+            "success_retry_delay": 900,
+            "ref_width": 122,
+            "ref_height": 250,
             "epd_type": "epd2in13_V4",
-            
-            
+
+
             "__title_lists__": "List Settings",
             "portlist": [20, 21, 22, 23, 25, 53, 69, 80, 110, 111, 135, 137, 139, 143, 161, 162, 389, 443, 445, 512, 513, 514, 587, 636, 993, 995, 1080, 1433, 1521, 2049, 3306, 3389, 5000, 5001, 5432, 5900, 8080, 8443, 9090, 10000],
             "mac_scan_blacklist": [],
             "ip_scan_blacklist": [],
-            "steal_file_names": ["ssh.csv","hack.txt"],
-            "steal_file_extensions": [".bjorn",".hack",".flag"],
-            
+            "steal_file_names": ["ssh.csv", "hack.txt"],
+            "steal_file_extensions": [".bjorn", ".hack", ".flag"],
+
             "__title_network__": "Network",
             "nmap_scan_aggressivity": "-T2",
             "portstart": 1,
             "portend": 2,
-            
+
             "__title_timewaits__": "Time Wait Settings",
             "timewait_smb": 0,
             "timewait_ssh": 0,
@@ -190,31 +192,27 @@ class SharedData:
         else:
             logger.warning("Could not add local MAC to blacklist: MAC address not found")
 
-
-
     def get_raspberry_mac(self):
         """Get the MAC address of the primary network interface (usually wlan0 or eth0)."""
         try:
             # First try wlan0 (wireless interface)
-            result = subprocess.run(['cat', '/sys/class/net/wlan0/address'], 
-                                 capture_output=True, text=True)
+            result = subprocess.run(['cat', '/sys/class/net/wlan0/address'],
+                                    capture_output=True, text=True)
             if result.returncode == 0 and result.stdout.strip():
                 return result.stdout.strip().lower()
-            
+
             # If wlan0 fails, try eth0 (ethernet interface)
-            result = subprocess.run(['cat', '/sys/class/net/eth0/address'], 
-                                 capture_output=True, text=True)
+            result = subprocess.run(['cat', '/sys/class/net/eth0/address'],
+                                    capture_output=True, text=True)
             if result.returncode == 0 and result.stdout.strip():
                 return result.stdout.strip().lower()
-            
+
             logger.warning("Could not find MAC address for wlan0 or eth0")
             return None
-            
+
         except Exception as e:
             logger.error(f"Error getting Raspberry Pi MAC address: {e}")
             return None
-
-
 
     def setup_environment(self):
         """Setup the environment with the necessary directories and files."""
@@ -224,7 +222,6 @@ class SharedData:
         self.delete_webconsolelog()
         self.initialize_csv()
         self.initialize_epd_display()
-    
 
     # def initialize_epd_display(self):
     #     """Initialize the e-paper display."""
@@ -251,6 +248,7 @@ class SharedData:
     #     except Exception as e:
     #         logger.error(f"Error initializing EPD display: {e}")
     #         raise
+
     def initialize_epd_display(self):
         """Initialize the e-paper display."""
         try:
@@ -280,13 +278,13 @@ class SharedData:
         except Exception as e:
             logger.error(f"Error initializing EPD display: {e}")
             raise
-        
+
     def initialize_variables(self):
         """Initialize the variables."""
         self.should_exit = False
         self.display_should_exit = False
-        self.orchestrator_should_exit = False 
-        self.webapp_should_exit = False 
+        self.orchestrator_should_exit = False
+        self.webapp_should_exit = False
         self.bjorn_instance = None
         self.wifichanged = False
         self.bluetooth_active = False
@@ -315,20 +313,20 @@ class SharedData:
         self.show_first_image = True
 
     def delete_webconsolelog(self):
-            """Delete the web console log file."""
-            try:
-                if os.path.exists(self.webconsolelog):
-                    os.remove(self.webconsolelog)
-                    logger.info(f"Deleted web console log file at {self.webconsolelog}")
-                    #recreate the file
+        """Delete the web console log file."""
+        try:
+            if os.path.exists(self.webconsolelog):
+                os.remove(self.webconsolelog)
+                logger.info(f"Deleted web console log file at {self.webconsolelog}")
+                # recreate the file
 
-                else:
-                    logger.info(f"Web console log file not found at {self.webconsolelog} ...")
+            else:
+                logger.info(f"Web console log file not found at {self.webconsolelog} ...")
 
-            except OSError as e:
-                logger.error(f"OS error occurred while deleting web console log file: {e}")
-            except Exception as e:
-                logger.error(f"Unexpected error occurred while deleting web console log file: {e}")
+        except OSError as e:
+            logger.error(f"OS error occurred while deleting web console log file: {e}")
+        except Exception as e:
+            logger.error(f"Unexpected error occurred while deleting web console log file: {e}")
 
     def create_livestatusfile(self):
         """Create the live status file, it will be used to store the current status of the scan."""
@@ -336,7 +334,8 @@ class SharedData:
             if not os.path.exists(self.livestatusfile):
                 with open(self.livestatusfile, 'w', newline='') as csvfile:
                     csvwriter = csv.writer(csvfile)
-                    csvwriter.writerow(['Total Open Ports', 'Alive Hosts Count', 'All Known Hosts Count', 'Vulnerabilities Count'])
+                    csvwriter.writerow(['Total Open Ports', 'Alive Hosts Count',
+                                       'All Known Hosts Count', 'Vulnerabilities Count'])
                     csvwriter.writerow([0, 0, 0, 0])
                 logger.info(f"Created live status file at {self.livestatusfile}")
             else:
@@ -345,7 +344,6 @@ class SharedData:
             logger.error(f"OS error occurred while creating live status file: {e}")
         except Exception as e:
             logger.error(f"Unexpected error occurred while creating live status file: {e}")
-
 
     def generate_actions_json(self):
         """Generate the actions JSON file, it will be used to store the actions configuration."""
@@ -368,7 +366,7 @@ class SharedData:
                             "b_status": b_status,
                             "b_parent": b_parent
                         })
-                        #add each b_class to the status list
+                        # add each b_class to the status list
                         self.status_list.append(b_class)
                     except AttributeError as e:
                         logger.error(f"Module {module_name} is missing required attributes: {e}")
@@ -376,7 +374,7 @@ class SharedData:
                         logger.error(f"Error importing module {module_name}: {e}")
                     except Exception as e:
                         logger.error(f"Unexpected error while processing module {module_name}: {e}")
-            
+
             try:
                 # update shared status list and write actions file under lock
                 try:
@@ -392,7 +390,6 @@ class SharedData:
                 logger.error(f"Unexpected error while writing to file {self.actions_file}: {e}")
         except Exception as e:
             logger.error(f"Unexpected error in generate_actions_json: {e}")
-
 
     def initialize_csv(self):
         """Initialize the network knowledge base CSV file with headers."""
@@ -428,7 +425,6 @@ class SharedData:
                 logger.info(f"Network knowledge base CSV file already exists at {self.netkbfile}")
         except Exception as e:
             logger.error(f"Unexpected error in initialize_csv: {e}")
-
 
     def load_config(self):
         """Load the configuration from the shared configuration JSON file."""
@@ -509,7 +505,8 @@ class SharedData:
 
             # Load static images from the root of staticpicdir
             self.bjornstatusimage = None
-            self.bjorn1 = self.load_image(os.path.join(self.staticpicdir, 'bjorn1.bmp')) # Used to calculate the center of the screen
+            self.bjorn1 = self.load_image(os.path.join(self.staticpicdir, 'bjorn1.bmp')
+                                          )  # Used to calculate the center of the screen
             self.port = self.load_image(os.path.join(self.staticpicdir, 'port.bmp'))
             self.frise = self.load_image(os.path.join(self.staticpicdir, 'frise.bmp'))
             self.target = self.load_image(os.path.join(self.staticpicdir, 'target.bmp'))
@@ -569,7 +566,6 @@ class SharedData:
                 for status, images in self.image_series.items():
                     logger.info(f"Loaded {len(images)} images for status {status}.")
 
-
             """Calculate the position of the Bjorn image on the screen to center it"""
             self.x_center1 = (self.width - self.bjorn1.width) // 2
             self.y_bottom1 = self.height - self.bjorn1.height
@@ -585,14 +581,14 @@ class SharedData:
             if self.bjornstatusimage is None:
                 raise AttributeError
         except AttributeError:
-            logger.warning(f"The image for status {self.bjornorch_status} is not available, using IDLE image by default.")
+            logger.warning(
+                f"The image for status {
+                    self.bjornorch_status} is not available, using IDLE image by default.")
             self.bjornstatusimage = self.attack
-        
+
         self.bjornstatustext = self.bjornorch_status  # Mettre à jour le texte du statut
 
-
     def load_image(self, image_path):
-
         """Load an image."""
         try:
             if not os.path.exists(image_path):
@@ -640,7 +636,6 @@ class SharedData:
         except Exception as e:
             logger.error(f"Error wrapping text: {e}")
             raise
-
 
     def read_data(self):
         """Read data from the CSV file."""
@@ -711,9 +706,20 @@ class SharedData:
 
     def update_stats(self):
         """Update the stats based on formulas."""
-        self.coinnbr = int((self.networkkbnbr * 5 + self.crednbr * 5 + self.datanbr * 5 + self.zombiesnbr * 10+self.attacksnbr * 5+ self.vulnnbr * 2 ))
-        self.levelnbr = int((self.networkkbnbr * 0.1 + self.crednbr * 0.2 + self.datanbr * 0.1 + self.zombiesnbr * 0.5+ self.attacksnbr+ self.vulnnbr * 0.01 ))
-
+        self.coinnbr = int((self.networkkbnbr * 5 + self.crednbr * 5 + self.datanbr * 5 +
+                           self.zombiesnbr * 10 + self.attacksnbr * 5 + self.vulnnbr * 2))
+        self.levelnbr = int(
+            (self.networkkbnbr *
+             0.1 +
+             self.crednbr *
+             0.2 +
+             self.datanbr *
+             0.1 +
+             self.zombiesnbr *
+             0.5 +
+             self.attacksnbr +
+             self.vulnnbr *
+             0.01))
 
     def print(self, message):
         """Print a debug message if debug mode is enabled."""
